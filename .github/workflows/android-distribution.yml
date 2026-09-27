@@ -35,6 +35,8 @@ jobs:
       DISTRIBUTION_REF: ${{ github.event.workflow_run.head_sha || 'refs/heads/main' }}
       FIREBASE_ANDROID_APP_ID: ${{ vars.FIREBASE_ANDROID_APP_ID }}
       FIREBASE_TESTER_GROUP: ${{ vars.FIREBASE_TESTER_GROUP }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
     steps:
       - name: Checkout tested commit
@@ -77,7 +79,9 @@ jobs:
             ANDROID_RELEASE_KEY_ALIAS \
             ANDROID_RELEASE_KEY_PASSWORD \
             FIREBASE_ANDROID_APP_ID \
-            FIREBASE_TESTER_GROUP
+            FIREBASE_TESTER_GROUP \
+            GCP_WORKLOAD_IDENTITY_PROVIDER \
+            GCP_SERVICE_ACCOUNT
           do
             [[ -n "${!name:-}" ]] || {
               echo "error: required testing environment value $name is missing" >&2
@@ -191,8 +195,8 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
         with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
 
       - name: Distribute to Firebase testers
         run: >-

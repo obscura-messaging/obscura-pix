@@ -84,15 +84,21 @@ never writes credentials outside runner-temporary or ignored paths.
 ## Google authentication
 
 Use GitHub's OpenID Connect token with Google Workload Identity Federation.
-Restrict the provider to `rhelsing/obscura-pix`, grant the repository principal
+Restrict the provider to `obscura-messaging/obscura-pix`, grant the repository principal
 `roles/iam.workloadIdentityUser` on a dedicated service account, and grant that
 service account `roles/firebaseappdistro.admin` in the Firebase project.
 
-The provider condition must also require `assertion.ref == 'refs/heads/main'`
-and
-`assertion.job_workflow_ref == 'rhelsing/obscura-pix/.github/workflows/android-distribution.yml@refs/heads/main'`.
-Repository-only conditions are too broad because another branch or workflow
-could otherwise request a distribution token.
+The provider's attribute condition must require all three claims:
+
+```text
+assertion.repository == 'obscura-messaging/obscura-pix' &&
+assertion.ref == 'refs/heads/main' &&
+assertion.workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/android-distribution.yml@refs/heads/main'
+```
+
+Use `workflow_ref`, not `job_workflow_ref`: the latter is only present for jobs
+using a reusable workflow. Repository-only conditions are too broad because
+another branch or workflow could otherwise request a distribution token.
 
 Do not create a long-lived service-account JSON key for GitHub Actions.
 
