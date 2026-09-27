@@ -1,13 +1,16 @@
 # Android testing distribution
 
-Successful `main` CI runs trigger `.github/workflows/android-distribution.yml`.
-The workflow rebuilds the exact tested commit as a signed, minified universal
-APK, retains it as a GitHub artifact for 30 days, and sends it to the configured
-Firebase App Distribution tester group. Maintainers can also run the workflow
-manually for the current `main` commit.
+Successful `main` JavaScript CI runs trigger `.github/workflows/android-distribution.yml`.
+The workflow builds the exact tested commit once as a signed, minified universal
+APK, retains the APK and release notes as a GitHub artifact for 30 days, and
+passes that same verified APK to a separate job for Firebase App Distribution.
+iOS CI runs independently and does not gate Android testing delivery.
+Maintainers can also run the distribution workflow manually for the current
+`main` commit.
 
 Pull requests never receive distribution credentials. Their Android CI build
-uses the checked-in Firebase stub and debug signing as a compile gate.
+uses the checked-in Firebase stub and debug signing as a compile gate; no
+compile-only Android build is repeated on `main`.
 
 ## Firebase
 
@@ -78,8 +81,10 @@ Configure these environment secrets:
 | `ANDROID_RELEASE_KEY_ALIAS` | Signing alias, normally `obscura-release`. |
 | `ANDROID_RELEASE_KEY_PASSWORD` | PKCS12 password. |
 
-The workflow validates the Firebase package and App ID before building and
-never writes credentials outside runner-temporary or ignored paths.
+The build job validates the Firebase package and App ID before building and
+never writes signing credentials outside runner-temporary or ignored paths.
+The delivery job receives only the retained APK and release notes, verifies
+the APK checksum and tested commit, then authenticates to Google Cloud.
 
 ## Google authentication
 

@@ -45,8 +45,10 @@ requirements. Push delivery cannot be validated on the simulator.
 
 ### CI
 
-CI builds the libsignal simulator FFI, prepares the local Swift package,
-installs pods, and builds `Obscura.xcworkspace` for a generic simulator.
+The independent `.github/workflows/ios.yml` workflow builds the libsignal
+simulator FFI, prepares the local Swift package, installs pods, and builds
+`Obscura.xcworkspace` for a generic simulator. Its PR check is required for
+merging, but an iOS `main` build does not block Android testing distribution.
 
 ### Device verification
 
