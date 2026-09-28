@@ -604,6 +604,31 @@ extension ObscuraBridge {
             }
         }
     }
+
+    /// Remove this device's decrypted copy of an attachment: the kit's database cache and the files
+    /// `downloadAttachment` wrote. The server's ciphertext is untouched.
+    @objc(purgeAttachment:resolver:rejecter:)
+    func purgeAttachment(_ id: String,
+                         resolver resolve: @escaping RCTPromiseResolveBlock,
+                         rejecter reject: @escaping RCTPromiseRejectBlock) {
+        Task {
+            do {
+                try await client.purgeAttachment(id: id)
+                let fm = FileManager.default
+                let dir = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent("attachments")
+                let safe = String(String.UnicodeScalarView(
+                    id.unicodeScalars.map { ObscuraBridge.safeIdChars.contains($0) ? $0 : "_" }))
+                for ext in ["jpg", "mp4", "mov"] {
+                    try? fm.removeItem(at: dir.appendingPathComponent("\(safe).\(ext)"))
+                    try? fm.removeItem(at: dir.appendingPathComponent("\(safe).\(ext).tmp"))
+                }
+                resolve(nil)
+            } catch {
+                rejectKit(reject, "PURGE_ERROR", error)
+            }
+        }
+    }
 }
 
 // MARK: - Image processing — pure native, path-in/path-out

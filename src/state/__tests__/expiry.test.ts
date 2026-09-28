@@ -49,14 +49,22 @@ describe('sweepExpired', () => {
     await put('directMessage', 'dm_recent');
     await seenByPeer('directMessage', 'dm_recent', NOW - 1_000);
     await put('directMessage', 'dm_unseen');
-    await put('pix', 'pix_expired');
+    await Obscura.entryPut(
+      'pix', 'pix_expired',
+      JSON.stringify({ conversationId: CONV, mediaRef: 'att_expired', _authorUserId: SELF }), 1, 'd',
+    );
     await seenByPeer('pix', 'pix_expired', LONG_AGO);
+    await Obscura.entryPut(
+      'pix', 'pix_unseen',
+      JSON.stringify({ conversationId: CONV, mediaRef: 'att_unseen', _authorUserId: SELF }), 1, 'd',
+    );
 
     const touched = await sweepExpired(NOW);
 
     expect(touched.sort()).toEqual(['directMessage', 'pix', SEEN_MODEL]);
     expect(await ids('directMessage')).toEqual(['dm_recent', 'dm_unseen']);
-    expect(await ids('pix')).toEqual([]);
+    expect(await ids('pix')).toEqual(['pix_unseen']);
+    expect(bridge.__purged).toEqual(['att_expired']);
     expect(await ids(SEEN_MODEL)).toEqual([seenEntryId('directMessage', 'dm_recent')]);
     expect(await ids(ERASED_MODEL)).toEqual([
       'directMessage:dm_expired',

@@ -214,6 +214,11 @@ Bytes never cross the bridge. `uploadAttachment` reads from a local file path;
 | ------------------------------------------- | ------- | --------------------------- | --------- |
 | `uploadAttachment(filePath)`                | string  | `{ id, contentKey, nonce }` | both      |
 | `downloadAttachment(id, contentKey, nonce)` | strings | absolute file path          | both      |
+| `purgeAttachment(id)`                       | string  | `void`                      | both      |
+
+`purgeAttachment` removes this device's decrypted copy: the kit's database cache
+(`KIT_API.md` §5.2) and the cache files `downloadAttachment` wrote. The server's
+ciphertext is untouched. The app calls it when a pix expires.
 
 The app stores `{id, contentKey, nonce}` inside its own payload; the kit treats
 them as opaque. Note the coupling: attachment blobs expire server-side at 30
