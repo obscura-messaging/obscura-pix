@@ -23,7 +23,7 @@ application fields or model names.
 
 | Model | Merge | Audience | Inbound authorization |
 |---|---|---|---|
-| `directMessage` | APPEND | conversation | conversation names self and sender |
+| `directMessage` | REPLACE | conversation | conversation names self and sender |
 | `story` | APPEND | all accepted friends | transport-attributed sender is the author |
 | `pix` | REPLACE | conversation | conversation names self and sender |
 | `profile` | REPLACE | all accepted friends | ID is `profile_<senderUserId>` |
@@ -112,10 +112,21 @@ all merge behavior must tolerate replay.
 
 ## Expiry
 
-Nothing expires automatically. Stories and entries remain until application
-storage behavior explicitly implements and tests expiry.
+Direct messages and pix are ephemeral (`src/domain/expiry.ts`). When the
+recipient sees one, their device writes `viewedAt` back to the same entry id,
+which reaches every device holding it, the sender's included. Each device erases
+its own copy 15 minutes after `viewedAt`, capped at the entry's clamped
+`sentAt` so a future-dated receipt cannot extend it. Nothing is synced as a
+delete.
+
+Erasing uses the kit's `entryErase`, and the device records the id in the
+local-only `_erased` model first. The drain consumes, and never stores, any later
+write for an erased id, so a replay or late receipt cannot bring it back.
+Markers are pruned after 30 days. Stories and profiles do not expire.
 
 ## Current gaps
 
 - Partial-recipient delivery is not observable to the application.
-- No distributed delete or expiry behavior exists.
+- Expiry is per device and driven by the seen receipt; there is no distributed
+  delete. A device that never receives the receipt keeps the entry.
+- Decrypted media caches are not purged when a pix expires.

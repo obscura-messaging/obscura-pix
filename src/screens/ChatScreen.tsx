@@ -3,7 +3,7 @@ import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, FlatList,
   KeyboardAvoidingView, Platform, Animated, StyleSheet,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Obscura, onObscuraEvent, type ModelEntry } from '../native/ObscuraModule';
@@ -12,6 +12,7 @@ import { useSession, useModelEntries, saveEntry } from '../state/store';
 import { AUTHOR_USER_ID } from '../models/schema';
 import { authorOf } from '../utils/identity';
 import { toast } from '../components/Toast';
+import { logError } from '../utils/log';
 import { SendIcon } from '../components/icons';
 import type { RootStackScreenProps, RootStackParamList } from '../navigation/types';
 import { openPixViewer } from '../navigation/openPixViewer';
@@ -81,6 +82,22 @@ export function ChatScreen({ route }: RootStackScreenProps<'Chat'>) {
   );
 
   const onViewPix = (entry: ModelEntry) => openPixViewer(nav, friend, [entry]);
+
+  // Seen receipts. An incoming message is seen once it is on screen in a focused chat; the receipt
+  // starts its ephemeral clock on every device that holds it (`domain/expiry.ts`).
+  const isFocused = useIsFocused();
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isFocused || myUserId === '') return;
+    for (const m of messages) {
+      if (typeof m.data.viewedAt === 'number') continue;
+      if (authorOf(m.data, AUTHOR_USER_ID) === myUserId) continue;
+      if (seenIdsRef.current.has(m.id)) continue;
+      seenIdsRef.current.add(m.id);
+      saveEntry('directMessage', { ...m.data, viewedAt: Date.now() }, m.id)
+        .catch((e) => logError('seen.upsert:' + m.id, e));
+    }
+  }, [isFocused, messages, myUserId]);
 
   // Typing observer + bubble — separate from entry-cache subscriptions since
   // typing isn't backed by entries.

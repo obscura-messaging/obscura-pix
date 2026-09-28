@@ -22,7 +22,7 @@ describe('what each model means', () => {
 
     expect([...rules.keys()].sort()).toEqual(['directMessage', 'pix', 'profile', 'story']);
     expect(rules.get('directMessage')).toEqual({
-      merge: 'APPEND', conversationField: 'conversationId', ownerIdPrefix: undefined,
+      merge: 'REPLACE', conversationField: 'conversationId', ownerIdPrefix: undefined,
     });
     expect(rules.get('story')).toEqual({
       merge: 'APPEND', conversationField: undefined, ownerIdPrefix: undefined,

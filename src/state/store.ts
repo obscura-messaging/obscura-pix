@@ -7,6 +7,7 @@ import {
 } from '../native/ObscuraModule';
 import { drainInboxFully } from './drainInbox';
 import { writeEntry, flushOutbox } from './writeEntry';
+import { sweepExpired } from './expiry';
 import { requestStartupPermissions } from '../application/requestStartupPermissions';
 import { logError } from '../utils/log';
 
@@ -132,8 +133,8 @@ export function useSession() {
  * on `messageReceived` (handled centrally in the
  * bootstrap subscription).
  *
- * There is no tombstone filter because the current application and kit APIs have
- * no delete operation.
+ * Expired entries need no filter: `sweepExpired` erases them from the kit's store, and the
+ * refresh after a sweep drops them from here.
  */
 export function useModelEntries(model: string): ModelEntry[] {
   const entries = useStore((s) => s.entries[model]);
@@ -280,6 +281,19 @@ export async function flushOutboxFromStore(): Promise<void> {
 function syncBothWays(label: string, alsoRefresh?: string): void {
   drainAndRefresh(alsoRefresh).catch((e) => logError('entries.drain:' + label, e));
   flushOutboxFromStore().catch((e) => logError('outbox.flush:' + label, e));
+  sweepAndRefresh().catch((e) => logError('expiry.sweep:' + label, e));
+}
+
+/** How often the ephemeral sweep runs while signed in. */
+const SWEEP_INTERVAL_MS = 30 * 1000;
+
+/** Erase expired ephemeral entries, then refresh the models a screen has loaded. */
+export async function sweepAndRefresh(): Promise<void> {
+  const touched = await sweepExpired();
+  const loaded = useStore.getState().entries;
+  for (const model of touched) {
+    if (loaded[model] !== undefined) await loadEntries(model);
+  }
 }
 
 /**
@@ -416,6 +430,15 @@ export function ObscuraBootstrap(): null {
   useEffect(() => {
     if (!authed) return;
     loadSession().catch((e) => logError('bootstrap.session', e));
+  }, [authed]);
+
+  // Ephemeral messages expire on a clock, not on an event, so the sweep also runs on a timer.
+  useEffect(() => {
+    if (!authed) return;
+    const timer = setInterval(() => {
+      sweepAndRefresh().catch((e) => logError('expiry.sweep:timer', e));
+    }, SWEEP_INTERVAL_MS);
+    return () => clearInterval(timer);
   }, [authed]);
 
   // Permission prompts must be serialized. Android drops concurrent requests, which previously
