@@ -14,6 +14,7 @@ import dev.barrelmaker.obscura.kit.ObscuraClient
 import dev.barrelmaker.obscura.kit.ObscuraConfig
 import dev.barrelmaker.obscura.kit.ObscuraLogger
 import dev.barrelmaker.obscura.kit.db.ObscuraDatabase
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -167,7 +168,14 @@ object ObscuraSession {
     private fun buildClient(username: String): ObscuraClient {
         destroyClient()
         val dbName = "obscura_${username}.db"
-        val driver = AndroidSqliteDriver(ObscuraDatabase.Schema, appContext, dbName)
+        // SQLCipher, keyed per user from the Android Keystore (iOS: SQLCipher + Keychain).
+        System.loadLibrary("sqlcipher")
+        val key = LocalKeystore.databaseKey(appContext, username)
+        LocalKeystore.encryptPlaintextDatabase(appContext, dbName, key)
+        val driver = AndroidSqliteDriver(
+            ObscuraDatabase.Schema, appContext, dbName,
+            factory = SupportOpenHelperFactory(key),
+        )
         val c = ObscuraClient(
             ObscuraConfig(apiUrl = API_URL),
             externalDriver = driver,
