@@ -17,3 +17,29 @@ export function parseFriendQR(value: string | null | undefined): string | null {
   const code = value.slice(PREFIX.length).trim();
   return code.length > 0 ? code : null;
 }
+
+// Provided by Hermes (and Node in tests); not in the TypeScript lib this project targets.
+declare function atob(data: string): string;
+
+/** Who a friend code points at, for display before the user decides to add them. */
+export interface FriendCodeTarget {
+  userId: string;
+  username: string;
+}
+
+/**
+ * Decode a friend code (`base64({"u": userId, "n": username})`, the kit's `FriendCode` format), or
+ * null if it isn't one. The name is only a preview of what the QR claims; once added, the friend
+ * graph is the source of names.
+ */
+export function decodeFriendCode(code: string): FriendCodeTarget | null {
+  try {
+    const json = JSON.parse(atob(code.trim().replace(/-/g, '+').replace(/_/g, '/'))) as unknown;
+    if (json === null || typeof json !== 'object') return null;
+    const { u, n } = json as { u?: unknown; n?: unknown };
+    if (typeof u !== 'string' || u === '' || typeof n !== 'string' || n === '') return null;
+    return { userId: u, username: n };
+  } catch {
+    return null;
+  }
+}
