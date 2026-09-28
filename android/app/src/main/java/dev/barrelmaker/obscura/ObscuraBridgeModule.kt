@@ -527,6 +527,28 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
         }
     }
 
+    /**
+     * Remove this device's decrypted copy of an attachment: the kit's database cache and the
+     * files [downloadAttachment] wrote. The server's ciphertext is untouched.
+     */
+    @ReactMethod
+    fun purgeAttachment(id: String, promise: Promise) {
+        scope.launch {
+            try {
+                requireClient().purgeAttachment(id)
+                val dir = java.io.File(reactApplicationContext.cacheDir, "attachments")
+                val safe = id.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                for (ext in listOf("jpg", "mp4", "mov")) {
+                    java.io.File(dir, "$safe.$ext").delete()
+                    java.io.File(dir, "$safe.$ext.tmp").delete()
+                }
+                promise.resolve(null)
+            } catch (t: Throwable) {
+                promise.rejectKit("PURGE_ERROR", t)
+            }
+        }
+    }
+
     // ─── Image processing (native, path-in/path-out) ────────────────────────
 
     /**

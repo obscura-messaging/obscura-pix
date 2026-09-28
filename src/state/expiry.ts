@@ -49,6 +49,8 @@ export async function sweepExpired(now: number = Date.now()): Promise<string[]> 
         const receiptId = seenEntryId(model, entry.id);
         live.add(receiptId);
         if (!isExpired(viewedAtFor(model, entry, receipts), now)) continue;
+        // Media first: once the entry is erased, nothing records which attachment it used.
+        if (typeof entry.data.mediaRef === 'string') await Obscura.purgeAttachment(entry.data.mediaRef);
         await eraseWithMarker(model, entry.id, now);
         await eraseWithMarker(SEEN_MODEL, receiptId, now);
         touched.add(model);
