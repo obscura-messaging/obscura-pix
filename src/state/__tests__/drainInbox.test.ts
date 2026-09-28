@@ -269,24 +269,34 @@ describe('merging against what is already stored', () => {
   });
 
   /**
-   * The viewed-receipt, end to end: the recipient's `viewedAt` update must not take the entry's
-   * authorship with it. Both kits stamp the authenticated sender on the row, so without the
-   * carry-over rule the pix would flip to "sent by them" the moment they opened it.
+   * Pix and messages are APPEND: once stored, nothing the other participant sends can change them.
+   * Seen state travels as a separate `seen` entry (domain/seen.ts), so there is no legitimate
+   * second write to allow.
    */
-  it('keeps the original author when the other participant sends a receipt', async () => {
+  it('ignores the other participant rewriting a pix or message', async () => {
     await Obscura.entryPut(
-      'pix', 'p', JSON.stringify({ conversationId: CONV, _authorUserId: SELF }), 1_000, 'device_mine',
+      'pix', 'p', JSON.stringify({ conversationId: CONV, caption: 'mine', _authorUserId: SELF }),
+      1_000, 'device_mine',
+    );
+    await Obscura.entryPut(
+      'directMessage', 'dm', JSON.stringify({ conversationId: CONV, content: 'what I said', _authorUserId: SELF }),
+      1_000, 'device_mine',
     );
     deliver({
       modelKey: 'pix', entryId: 'p', sentAt: 9_000,
-      payload: JSON.stringify({ conversationId: CONV, viewedAt: 9_000, _authorUserId: PEER }),
+      payload: JSON.stringify({ conversationId: CONV, caption: 'rewritten', viewedAt: 9_000 }),
+    });
+    deliver({
+      modelKey: 'directMessage', entryId: 'dm', sentAt: 9_000,
+      payload: JSON.stringify({ conversationId: CONV, content: 'words put in my mouth' }),
     });
 
     await drainInbox();
 
-    const stored = JSON.parse((await Obscura.entryAll('pix'))[0].data);
-    expect(stored._authorUserId).toBe(SELF);
-    expect(stored.viewedAt).toBe(9_000);
+    const pix = JSON.parse((await Obscura.entryAll('pix'))[0].data);
+    const dm = JSON.parse((await Obscura.entryAll('directMessage'))[0].data);
+    expect(pix).toEqual({ conversationId: CONV, caption: 'mine', _authorUserId: SELF });
+    expect(dm.content).toBe('what I said');
   });
 });
 

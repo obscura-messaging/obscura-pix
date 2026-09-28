@@ -20,15 +20,18 @@ describe('what each model means', () => {
   it('matches the contract table', () => {
     const rules = modelRules();
 
-    expect([...rules.keys()].sort()).toEqual(['directMessage', 'pix', 'profile', 'story']);
+    expect([...rules.keys()].sort()).toEqual(['directMessage', 'pix', 'profile', 'seen', 'story']);
     expect(rules.get('directMessage')).toEqual({
-      merge: 'REPLACE', conversationField: 'conversationId', ownerIdPrefix: undefined,
+      merge: 'APPEND', conversationField: 'conversationId', ownerIdPrefix: undefined,
     });
     expect(rules.get('story')).toEqual({
       merge: 'APPEND', conversationField: undefined, ownerIdPrefix: undefined,
     });
     expect(rules.get('pix')).toEqual({
-      merge: 'REPLACE', conversationField: 'conversationId', ownerIdPrefix: undefined,
+      merge: 'APPEND', conversationField: 'conversationId', ownerIdPrefix: undefined,
+    });
+    expect(rules.get('seen')).toEqual({
+      merge: 'APPEND', conversationField: 'conversationId', ownerIdPrefix: undefined,
     });
     expect(rules.get('profile')).toEqual({
       merge: 'REPLACE', conversationField: undefined, ownerIdPrefix: 'profile_',

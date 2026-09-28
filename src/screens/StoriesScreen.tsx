@@ -13,7 +13,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Obscura, type ModelEntry } from '../native/ObscuraModule';
 import { logError } from '../utils/log';
 import { timeAgo as fmtTimeAgo } from '../utils/format';
-import { useSession, useModelEntries, saveEntry } from '../state/store';
+import { useSession, useModelEntries, markSeen } from '../state/store';
 import { AUTHOR_USER_ID } from '../models/schema';
 import { authorOf, displayNameFor } from '../utils/identity';
 import type { RootStackParamList, RootStackScreenProps, StoryGroup } from '../navigation/types';
@@ -55,27 +55,24 @@ export function StoryViewer({ route, navigation }: RootStackScreenProps<'StoryVi
   const group = groups[groupIdx];
   const story = group?.stories[storyIdx];
 
-  // Dedup `viewedAt` upserts so multiple exit paths don't double-fire for
-  // the same entry.
+  // Dedup seen receipts so multiple exit paths don't double-fire for the same
+  // entry.
   const viewedIdsRef = useRef<Set<string>>(new Set());
 
-  // If `markViewed` was requested, fire a viewedAt upsert on the currently
-  // displayed pix. LWW merges so the sender gets the receipt. The
-  // `saveEntry` refreshes the model, which re-renders other screens reactively.
+  // If `markViewed` was requested, send a seen receipt for the currently
+  // displayed pix. It reaches the sender, and the refresh re-renders other
+  // screens reactively.
   const markCurrentViewed = useCallback(() => {
     if (!markViewed || !story) return;
     if (viewedIdsRef.current.has(story.id)) return;
     viewedIdsRef.current.add(story.id);
-    // The viewed-receipt: the RECIPIENT writes it, so this is the case where an equal-timestamp
-    // merge collision is real rather than theoretical (DOMAIN_CONTRACT). It goes back to the same
-    // conversation audience the pix came from, which is why `conversationId` must stay in the data.
-    saveEntry('pix', { ...story.data, viewedAt: Date.now() }, story.id)
-      .catch((e) => logError('viewonce.upsert:' + story.id, e));
+    // A separate `seen` entry (domain/seen.ts), so the pix itself is never rewritten.
+    markSeen('pix', story).catch((e) => logError('viewonce.seen:' + story.id, e));
   }, [markViewed, story]);
 
   // Catch ALL exit paths uniformly (header back, hardware back, iOS
   // swipe-back, close button). Without this, hardware/swipe back would skip
-  // the viewedAt receipt entirely.
+  // the seen receipt entirely.
   useEffect(() => {
     const sub = navigation.addListener('beforeRemove', markCurrentViewed);
     return sub;

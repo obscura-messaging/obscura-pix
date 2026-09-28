@@ -47,7 +47,7 @@ export interface Entry {
  * Rule 2 is required. Without it an equal-timestamp conflict resolves to "whichever arrived
  * first", so two devices that receive the two writes in different orders converge to DIFFERENT
  * states and never reconcile — silently, and invisibly to single-device testing (`DOMAIN_CONTRACT.md`).
- * `pix.viewedAt` is written by the *recipient*, i.e. a second user, so equal timestamps are a real
+ * A user's own devices write the same `profile` concurrently, so equal timestamps are a real
  * collision and not a thought experiment.
  */
 export function winner(rule: MergeRule, existing: Entry, incoming: Entry): Entry {

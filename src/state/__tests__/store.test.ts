@@ -1,7 +1,8 @@
 import {
-  useStore, loadEntries, drainAndRefresh, saveEntry,
+  useStore, loadEntries, drainAndRefresh, saveEntry, markSeen,
   applyObscuraEvent, loadSession, refreshFriendGraph,
 } from '../store';
+import { SEEN_MODEL, seenEntryId } from '../../domain/seen';
 import { Obscura } from '../../native/ObscuraModule';
 import { getFakeBridge } from '../../native/__fixtures__/reactNativeMock';
 
@@ -56,6 +57,40 @@ describe('refreshFriendGraph', () => {
 });
 
 describe('loadEntries', () => {
+  /** Seen state comes only from a receipt by the other participant (domain/seen.ts). */
+  it('takes viewedAt from a valid receipt and never from the entry payload', async () => {
+    await Obscura.entryPut(
+      'directMessage', 'dm_1',
+      JSON.stringify({ conversationId: CONV, content: 'hi', viewedAt: 1, _authorUserId: BOB }), 1_000, 'd',
+    );
+
+    await loadEntries('directMessage');
+    expect(useStore.getState().entries.directMessage?.[0].data.viewedAt).toBeUndefined();
+
+    await Obscura.entryPut(
+      SEEN_MODEL, seenEntryId('directMessage', 'dm_1'),
+      JSON.stringify({ conversationId: CONV, model: 'directMessage', entryId: 'dm_1', viewedAt: 2_000, _authorUserId: SELF }),
+      2_000, 'd',
+    );
+    await loadEntries('directMessage');
+    expect(useStore.getState().entries.directMessage?.[0].data.viewedAt).toBe(2_000);
+  });
+
+  it('markSeen sends a seen receipt to the conversation and leaves the message untouched', async () => {
+    session();
+    await Obscura.entryPut(
+      'directMessage', 'dm_1', JSON.stringify({ conversationId: CONV, content: 'hi', _authorUserId: BOB }), 1_000, 'd',
+    );
+    await loadEntries('directMessage');
+
+    await markSeen('directMessage', useStore.getState().entries.directMessage![0]);
+
+    const sent = bridge.__sent.find((x) => x.modelKey === SEEN_MODEL);
+    expect(sent).toMatchObject({ recipientUserIds: [BOB], entryId: seenEntryId('directMessage', 'dm_1') });
+    expect(JSON.parse((await Obscura.entryAll('directMessage'))[0].data).content).toBe('hi');
+    expect(typeof useStore.getState().entries.directMessage?.[0].data.viewedAt).toBe('number');
+  });
+
   it('parses the stored JSON into the cache', async () => {
     await Obscura.entryPut('story', 's1', JSON.stringify({ content: 'hi' }), 1_000, 'd');
 
