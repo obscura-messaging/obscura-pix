@@ -16,6 +16,13 @@ marked TestFlight Internal Only, so the same build can later be selected for
 external testing or App Store review if the app is ready. External testing can
 require Apple's beta review; builds expire after 90 days.
 
+The Account Holder completed Apple's export-compliance questionnaire for the
+first build, and App Store Connect recorded `usesNonExemptEncryption: false`.
+`ITSAppUsesNonExemptEncryption = NO` in `Info.plist` reflects that determination
+for subsequent uploads. Revisit the determination before distributing builds
+if the app's encryption or applicable requirements change; the build pipeline
+must not guess an exemption.
+
 ## Apple signing
 
 The bundle ID is `dev.barrelmaker.obscura`, on Apple team `KY4LCG34B8`, with
