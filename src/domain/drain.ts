@@ -31,6 +31,7 @@
  */
 
 import { parseConversationId } from './conversation';
+import { erasedKey } from './expiry';
 import { merge, type Entry, type MergeRule } from './merge';
 import { AUTHOR_USER_ID } from '../models/schema';
 
@@ -139,12 +140,17 @@ export interface DrainPlan {
  *
  * `selfUserId` is this device's authenticated user. It is required, not optional: the conversation
  * rule is meaningless without it, and defaulting it to `''` would silently authorize everything.
+ *
+ * `erased` holds `erasedKey(model, id)` for entries this device has already erased
+ * (`domain/expiry.ts`). A write for one of them — a replay, or a late seen receipt from another
+ * device — is consumed and never stored, so an erased message cannot come back.
  */
 export function planDrain(
   rows: readonly DrainRow[],
   knownModels: ReadonlyMap<string, ModelRules>,
   state: ReadonlyMap<string, ReadonlyMap<string, Entry>>,
   selfUserId: string,
+  erased: ReadonlySet<string> = new Set(),
 ): DrainPlan {
   const plan: DrainPlan = { writes: new Map(), consume: [], discard: [] };
   // Merge accumulates within the batch too: two rows touching one entry id must resolve against
@@ -199,6 +205,11 @@ export function planDrain(
     const unauthorized = authorize(row, rules, data, selfUserId);
     if (unauthorized !== null) {
       plan.discard.push({ id: row.id, reason: unauthorized });
+      continue;
+    }
+
+    if (erased.has(erasedKey(model, row.entryId))) {
+      plan.consume.push(row.id);
       continue;
     }
 

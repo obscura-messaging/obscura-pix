@@ -423,3 +423,24 @@ describe('the empty case', () => {
     expect(plan.writes.size).toBe(0);
   });
 });
+
+describe('erased entries', () => {
+  /** A replay or late seen receipt for an erased entry must not bring it back. */
+  it('consumes a write for an erased id without storing it', () => {
+    const r = row({ modelKey: 'directMessage', entryId: 'dm_gone' });
+
+    const plan = planDrain([r], models, empty, SELF, new Set(['directMessage:dm_gone']));
+
+    expect(plan.consume).toEqual([r.id]);
+    expect(plan.writes.get('directMessage') ?? []).toEqual([]);
+    expect(plan.discard).toEqual([]);
+  });
+
+  it('only skips the erased model, not the same id in another model', () => {
+    const r = row({ modelKey: 'pix', entryId: 'dm_gone' });
+
+    const plan = planDrain([r], models, empty, SELF, new Set(['directMessage:dm_gone']));
+
+    expect(plan.writes.get('pix')?.map((e) => e.id)).toEqual(['dm_gone']);
+  });
+});

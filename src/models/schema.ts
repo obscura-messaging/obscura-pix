@@ -63,8 +63,16 @@ export type ModelSchema = Record<string, ModelDeclaration>;
  */
 export const obscuraSchema = {
   directMessage: {
-    fields: { conversationId: 'string', content: 'string', _authorUserId: 'string' },
-    merge: 'APPEND',
+    fields: {
+      conversationId: 'string',
+      content: 'string',
+      _authorUserId: 'string',
+      // Set by the RECIPIENT when the message is seen. Starts the ephemeral clock on every device
+      // that holds the message (`domain/expiry.ts`).
+      viewedAt: 'number?',
+    },
+    // REPLACE, like `pix`: the seen receipt is a second write to the same entry id.
+    merge: 'REPLACE',
     // 1:1 — deliver to both conversation participants; never broadcast.
     audience: { kind: 'conversation', field: 'conversationId' },
   },

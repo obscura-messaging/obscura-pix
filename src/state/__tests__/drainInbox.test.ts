@@ -234,17 +234,15 @@ describe('merging against what is already stored', () => {
   });
 
   it('keeps the first write for an APPEND model when a duplicate arrives', async () => {
-    await Obscura.entryPut(
-      'directMessage', 'dm', JSON.stringify({ conversationId: CONV, content: 'first' }), 1_000, 'd',
-    );
+    await Obscura.entryPut('story', 's', JSON.stringify({ content: 'first' }), 1_000, 'd');
     deliver({
-      entryId: 'dm', sentAt: 9_000,
-      payload: JSON.stringify({ conversationId: CONV, content: 'second' }),
+      modelKey: 'story', entryId: 's', sentAt: 9_000,
+      payload: JSON.stringify({ content: 'second' }),
     });
 
     await drainInbox();
 
-    expect(JSON.parse((await Obscura.entryAll('directMessage'))[0].data).content).toBe('first');
+    expect(JSON.parse((await Obscura.entryAll('story'))[0].data).content).toBe('first');
   });
 
   /**
