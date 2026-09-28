@@ -34,7 +34,7 @@ automatically locate JDK 21 through `java_home` on macOS.
 ## Setup
 
 ```bash
-git clone --recurse-submodules https://github.com/rhelsing/obscura-pix.git
+git clone --recurse-submodules https://github.com/obscura-messaging/obscura-pix.git
 cd obscura-pix
 just setup
 just doctor
