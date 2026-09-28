@@ -91,8 +91,8 @@ push-sender-build:
 
 # Prepare all native iOS dependencies.
 [private]
-ios-prepare:
-    ./obscura-native/swift/scripts/bootstrap-libsignal.sh ios-sim
+ios-prepare libsignal_target="ios-sim": ensure-node-modules
+    ./obscura-native/swift/scripts/bootstrap-libsignal.sh {{quote(libsignal_target)}}
     ./obscura-native/swift/dev.sh prepare
     cd ios && pod install
 
@@ -100,3 +100,7 @@ ios-prepare:
 # compile-only build, for example: just ios-build arm64
 ios-build architecture="": ios-prepare
     architecture={{quote(architecture)}}; args=(COMPILER_INDEX_STORE_ENABLE=NO); [[ -z "$architecture" ]] || args+=(ARCHS="$architecture" ONLY_ACTIVE_ARCH=YES); GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all xcodebuild -workspace ios/Obscura.xcworkspace -scheme Obscura -destination 'generic/platform=iOS Simulator' -configuration Debug CODE_SIGNING_ALLOWED=NO "${args[@]}" build
+
+# Archive the production-bundle-ID device build for App Store Connect/TestFlight.
+ios-archive archive_path="ios/build/Obscura.xcarchive" build_number="": (ios-prepare "ios-device")
+    build_number={{quote(build_number)}}; args=(); [[ -z "$build_number" ]] || args+=(CURRENT_PROJECT_VERSION="$build_number"); GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all xcodebuild -workspace ios/Obscura.xcworkspace -scheme Obscura -configuration Release -destination 'generic/platform=iOS' -archivePath {{quote(archive_path)}} "${args[@]}" archive

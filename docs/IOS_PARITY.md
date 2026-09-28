@@ -47,8 +47,11 @@ requirements. Push delivery cannot be validated on the simulator.
 
 The independent `.github/workflows/ios.yml` workflow builds the libsignal
 simulator FFI, prepares the local Swift package, installs pods, and builds
-`Obscura.xcworkspace` for a generic simulator. Its PR check is required for
-merging, but an iOS `main` build does not block Android testing distribution.
+`Obscura.xcworkspace` for a generic simulator on pull requests. Its PR check
+is required for merging. On `main`, a separate job builds the signed device
+archive once and uploads the verified IPA to internal TestFlight; see
+[`IOS_DISTRIBUTION.md`](IOS_DISTRIBUTION.md). iOS does not block Android
+testing distribution.
 
 ### Device verification
 
@@ -64,5 +67,5 @@ See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the complete setup and build
 commands.
 
 Do not infer production support from the build gate or foreground interop pass.
-Until real-device push and release-signing tests exist, Android remains the only
-production platform.
+Until real-device push and TestFlight installation are verified, Android
+remains the only production-ready platform.
