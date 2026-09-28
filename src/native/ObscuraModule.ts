@@ -26,6 +26,7 @@ interface NativeObscuraBridge {
     localMetadataJson: string | null,
   ): Promise<void>;
   entryAll(model: string): Promise<StoredEntry[]>;
+  entryErase(model: string, id: string): Promise<void>;
   sendEntry(
     recipientUserIds: string[], modelKey: string, entryId: string,
     sentAt: number, payloadJson: string,
@@ -226,6 +227,9 @@ export const Obscura = {
     Bridge.entryPut(model, id, dataJson, sentAt, authorDeviceId, localMetadataJson),
 
   entryAll: (model: string): Promise<StoredEntry[]> => Bridge.entryAll(model),
+
+  /** Securely remove one local entry (§8.1). The app decides when; not synced to peers. */
+  entryErase: (model: string, id: string): Promise<void> => Bridge.entryErase(model, id),
 
   /** The caller names recipients (DOMAIN_CONTRACT). The kit resolves no entry audience. */
   sendEntry: (
