@@ -21,7 +21,6 @@ import { RecipientPicker } from '../screens/RecipientPicker';
 import { StoryViewer } from '../screens/StoriesScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { AddFriendScreen } from '../screens/AddFriendScreen';
-import { ScanFriendScreen } from '../screens/ScanFriendScreen';
 import { CameraIcon, ChatIcon } from '../components/icons';
 
 import type { RootStackParamList, MainTabParamList } from './types';
@@ -65,7 +64,7 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
 function MainTabs() {
   // Keep the record-camera live while MainTabs is the foreground screen — true
   // across a tab swipe (so the preview slides in live), false when a modal
-  // (ScanFriend's own camera, PhotoPreview) covers it or the app backgrounds.
+  // (e.g. PhotoPreview) covers it or the app backgrounds.
   const focused = useIsFocused();
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   useEffect(() => {
@@ -178,11 +177,6 @@ export function RootNavigator() {
               headerTitleStyle: { color: colors.text, fontWeight: '700' },
               title: 'Add friend',
             }}
-          />
-          <RootStack.Screen
-            name="ScanFriend"
-            component={ScanFriendScreen}
-            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
           />
         </>
       )}

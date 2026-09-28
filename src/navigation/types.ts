@@ -43,7 +43,6 @@ export type RootStackParamList = {
   };
   Profile: undefined;
   AddFriend: undefined;
-  ScanFriend: undefined;
 };
 
 export interface StoryGroup {

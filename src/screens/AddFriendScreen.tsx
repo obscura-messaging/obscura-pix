@@ -32,9 +32,8 @@ export function AddFriendScreen() {
     catch (e: any) { toast.error(e.message); }
   };
 
-  // Dedicated scan screen (codeScanner can't coexist with the record camera's
-  // video output — see ScanFriendScreen).
-  const scanQR = () => nav.navigate('ScanFriend');
+  // The main camera recognises friend QR codes, so scanning just opens it.
+  const scanQR = () => nav.navigate('MainTabs', { screen: 'Camera' });
 
   return (
     <View style={afs.container}>

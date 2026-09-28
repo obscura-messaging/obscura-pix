@@ -12,6 +12,9 @@ import { logError } from '../utils/log';
 import { clamp, touchDist } from '../utils/gesture';
 import { FlashIcon, FlipCameraIcon } from '../components/icons';
 import { CameraPermissionGate } from '../components/CameraPermissionGate';
+import { useFriendQRScanner } from '../hooks/useFriendQRScanner';
+import { FriendQRBanner } from '../components/FriendQRBanner';
+import { CameraHighlights } from '@mgcrea/vision-camera-barcode-scanner';
 import { MainHeaderOverlay } from '../components/MainHeaderOverlay';
 import type { RootStackParamList } from '../navigation/types';
 import { colors } from '../styles';
@@ -39,11 +42,14 @@ export function CameraScreen() {
   // actually on-screen and the app is foregrounded. MainTabs drives this via
   // CameraActiveContext (MainTabs-focused && app-active): it stays true across a
   // left/right tab swipe (so the preview slides in live, not black), but flips
-  // false when a modal covers MainTabs — notably ScanFriend, which opens its
-  // OWN camera and would otherwise collide with this one on CameraX — or when
+  // false when a modal covers MainTabs, or when
   // the app backgrounds (screen lock), which is what fixes the black-preview-
   // after-unlock bug.
   const cameraActive = useCameraActive();
+
+  // Friend QR codes are recognised right here in the record camera (paused while recording). The
+  // banner offers the add; nothing is sent unless the user taps it.
+  const qr = useFriendQRScanner(cameraActive && !recording);
 
   // Cap to a sane 1080p30 format. Without this VisionCamera picks a 120fps HEVC
   // monster that makes the recording AssetWriter slow to start + huge files.
@@ -207,7 +213,9 @@ export function CameraScreen() {
           videoBitRate="low"
           photoQualityBalance="speed"
           zoom={zoom}
+          {...qr.cameraProps}
         />
+        <CameraHighlights highlights={qr.highlights} color={colors.accent} />
         <MainHeaderOverlay camera={true} />
 
       {/* Pinch-zoom gesture surface. Claims only on a 2-finger move, so a
@@ -244,6 +252,9 @@ export function CameraScreen() {
             </View>
           </View>
         </View>
+        {qr.detected && (
+          <FriendQRBanner detected={qr.detected} top={insets.top + 72} onDone={qr.dismiss} />
+        )}
       </View>
     </CameraPermissionGate>
   );
