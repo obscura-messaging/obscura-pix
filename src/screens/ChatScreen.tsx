@@ -8,7 +8,7 @@ import { useHeaderHeight } from '@react-navigation/elements';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Obscura, onObscuraEvent, type ModelEntry } from '../native/ObscuraModule';
 import { conversationId } from '../domain/conversation';
-import { useSession, useModelEntries, saveEntry } from '../state/store';
+import { useSession, useModelEntries, saveEntry, markSeen } from '../state/store';
 import { AUTHOR_USER_ID } from '../models/schema';
 import { authorOf } from '../utils/identity';
 import { toast } from '../components/Toast';
@@ -94,8 +94,7 @@ export function ChatScreen({ route }: RootStackScreenProps<'Chat'>) {
       if (authorOf(m.data, AUTHOR_USER_ID) === myUserId) continue;
       if (seenIdsRef.current.has(m.id)) continue;
       seenIdsRef.current.add(m.id);
-      saveEntry('directMessage', { ...m.data, viewedAt: Date.now() }, m.id)
-        .catch((e) => logError('seen.upsert:' + m.id, e));
+      markSeen('directMessage', m).catch((e) => logError('seen.mark:' + m.id, e));
     }
   }, [isFocused, messages, myUserId]);
 

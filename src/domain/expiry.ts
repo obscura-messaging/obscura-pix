@@ -2,9 +2,9 @@
  * Ephemeral messages: what expires, and when.
  *
  * A direct message or pix is erased from a device 15 minutes after it was **seen by its
- * recipient**. The recipient's `viewedAt` receipt reaches every device that holds the entry (the
- * sender's included), so each device runs the same clock and erases its own copy. Nothing is
- * synced as a delete; the receipt is the only signal.
+ * recipient**. The recipient's seen receipt (`domain/seen.ts`) reaches every device that holds the
+ * entry (the sender's included), so each device runs the same clock and erases its own copy.
+ * Nothing is synced as a delete; the receipt is the only signal.
  *
  * Pure: no bridge, no clock of its own. `state/expiry.ts` applies it.
  */
@@ -29,20 +29,9 @@ export function erasedKey(model: string, id: string): string {
 }
 
 /**
- * When an entry expires, or `null` if it has not been seen.
- *
- * `viewedAt` is written by the recipient's device, so it is capped at the entry's `sentAt`. For
- * the receipt write that is the moment it was written, and on receipt the kit clamps a peer's
- * `sentAt` to at most 60s past arrival (NATIVE_CONTRACT §2.4). So a future-dated `viewedAt` cannot
- * extend a message's life on this device.
+ * Whether an entry seen at `viewedAt` (from `domain/seen.ts`, already capped) has expired.
+ * An unseen entry (`null`) never expires.
  */
-export function expiresAt(data: Record<string, unknown>, sentAt: number): number | null {
-  const viewedAt = data.viewedAt;
-  if (typeof viewedAt !== 'number' || !Number.isFinite(viewedAt)) return null;
-  return Math.min(viewedAt, sentAt) + EXPIRE_AFTER_MS;
-}
-
-export function isExpired(data: Record<string, unknown>, sentAt: number, now: number): boolean {
-  const at = expiresAt(data, sentAt);
-  return at !== null && at <= now;
+export function isExpired(viewedAt: number | null, now: number): boolean {
+  return viewedAt !== null && viewedAt + EXPIRE_AFTER_MS <= now;
 }

@@ -67,12 +67,9 @@ export const obscuraSchema = {
       conversationId: 'string',
       content: 'string',
       _authorUserId: 'string',
-      // Set by the RECIPIENT when the message is seen. Starts the ephemeral clock on every device
-      // that holds the message (`domain/expiry.ts`).
-      viewedAt: 'number?',
     },
-    // REPLACE, like `pix`: the seen receipt is a second write to the same entry id.
-    merge: 'REPLACE',
+    // APPEND: a message never changes after it is sent. Being seen is a separate `seen` entry.
+    merge: 'APPEND',
     // 1:1 — deliver to both conversation participants; never broadcast.
     audience: { kind: 'conversation', field: 'conversationId' },
   },
@@ -104,8 +101,7 @@ export const obscuraSchema = {
   },
   pix: {
     fields: {
-      // Canonical sorted "userIdA_userIdB" — targets both parties so the
-      // viewed-receipt (Bob → Alice) resolves in either direction.
+      // Canonical sorted "userIdA_userIdB" — targets both parties.
       conversationId: 'string',
       _authorUserId: 'string',
       mediaRef: 'string',
@@ -118,11 +114,25 @@ export const obscuraSchema = {
       // the shape can evolve without a schema/contract change. See Caption.tsx.
       captionMeta: 'string?',
       displayDuration: 'number',
-      viewedAt: 'number?',
     },
-    merge: 'REPLACE',
-    // 1:1 — deliver to both conversation participants so the viewed-receipt
-    // (recipient → sender) resolves in either direction; never broadcast.
+    // APPEND: a pix never changes after it is sent. Being viewed is a separate `seen` entry.
+    merge: 'APPEND',
+    // 1:1 — deliver to both conversation participants; never broadcast.
+    audience: { kind: 'conversation', field: 'conversationId' },
+  },
+  seen: {
+    // A seen receipt, written by the RECIPIENT of a `directMessage` or `pix` (`domain/seen.ts`).
+    // Its id is `seen_<model>_<entryId>`, one per entry. It starts that entry's ephemeral clock
+    // (`domain/expiry.ts`) and drives the viewed state in the UI.
+    fields: {
+      conversationId: 'string',
+      model: 'string',
+      entryId: 'string',
+      viewedAt: 'number',
+      _authorUserId: 'string',
+    },
+    merge: 'APPEND',
+    // Both participants, so the sender learns it was seen.
     audience: { kind: 'conversation', field: 'conversationId' },
   },
 } satisfies ModelSchema;

@@ -8,6 +8,7 @@ import {
 import { drainInboxFully } from './drainInbox';
 import { writeEntry, flushOutbox } from './writeEntry';
 import { sweepExpired } from './expiry';
+import { RECEIPTED_MODELS, SEEN_MODEL, indexReceipts, seenEntryId, viewedAtFor } from '../domain/seen';
 import { requestStartupPermissions } from '../application/requestStartupPermissions';
 import { logError } from '../utils/log';
 
@@ -135,6 +136,10 @@ export function useSession() {
  *
  * Expired entries need no filter: `sweepExpired` erases them from the kit's store, and the
  * refresh after a sweep drops them from here.
+ *
+ * For receipted models (`directMessage`, `pix`), `data.viewedAt` is filled in from a valid seen
+ * receipt (`domain/seen.ts`) and never taken from the entry's own payload, so the screens can keep
+ * reading `data.viewedAt` while a sender cannot mark their own message seen.
  */
 export function useModelEntries(model: string): ModelEntry[] {
   const entries = useStore((s) => s.entries[model]);
@@ -154,6 +159,8 @@ export function useModelEntries(model: string): ModelEntry[] {
 export async function loadEntries(model: string): Promise<void> {
   try {
     const stored = await Obscura.entryAll(model);
+    const receipted = (RECEIPTED_MODELS as readonly string[]).includes(model);
+    const receipts = receipted ? await loadReceipts() : new Map();
     const parsed: ModelEntry[] = [];
     for (const e of stored) {
       let data: Record<string, unknown>;
@@ -165,12 +172,36 @@ export async function loadEntries(model: string): Promise<void> {
         logError('entries.parse:' + model, new Error(`entry ${e.id} is not JSON`));
         continue;
       }
+      if (receipted) {
+        delete data.viewedAt;
+        const viewedAt = viewedAtFor(model, { id: e.id, data }, receipts);
+        if (viewedAt !== null) data.viewedAt = viewedAt;
+      }
       parsed.push({ id: e.id, data, timestamp: e.sentAt, authorDeviceId: e.authorDeviceId });
     }
     useStore.getState()._setEntries(model, parsed);
   } catch (e) {
     logError('entries.load:' + model, e);
   }
+}
+
+async function loadReceipts() {
+  const rows = [];
+  for (const e of await Obscura.entryAll(SEEN_MODEL)) {
+    try {
+      rows.push({ id: e.id, data: JSON.parse(e.data) as Record<string, unknown>, sentAt: e.sentAt });
+    } catch {
+      logError('entries.parse:' + SEEN_MODEL, new Error(`entry ${e.id} is not JSON`));
+    }
+  }
+  return indexReceipts(rows);
+}
+
+/** A model changed; which loaded slices need a refresh. Receipts change how entries render. */
+function affectedModels(changed: Iterable<string>): Set<string> {
+  const out = new Set(changed);
+  if (out.has(SEEN_MODEL)) for (const m of RECEIPTED_MODELS) out.add(m);
+  return out;
 }
 
 /**
@@ -183,7 +214,7 @@ export async function drainAndRefresh(alsoRefresh?: string): Promise<void> {
   try {
     const result = await drainInboxFully();
     const loaded = useStore.getState().entries;
-    const models = new Set(alsoRefresh ? [...result.touched, alsoRefresh] : result.touched);
+    const models = affectedModels(alsoRefresh ? [...result.touched, alsoRefresh] : result.touched);
     for (const model of models) {
       // Only slices a screen has actually displayed — a model nobody has opened does not need to
       // be in memory.
@@ -255,6 +286,21 @@ export async function saveEntry(
 }
 
 /**
+ * Send a seen receipt for an entry the user just saw (`domain/seen.ts`), then refresh the entry's
+ * model so its viewed state shows. Only the recipient calls this; the caller checks.
+ */
+export async function markSeen(model: string, entry: ModelEntry): Promise<void> {
+  const conversationId = entry.data.conversationId;
+  if (typeof conversationId !== 'string') return;
+  await saveEntry(
+    SEEN_MODEL,
+    { conversationId, model, entryId: entry.id, viewedAt: Date.now() },
+    seenEntryId(model, entry.id),
+  );
+  await loadEntries(model);
+}
+
+/**
  * Retry entries whose send reached nobody.
  *
  * The counterpart to `drainAndRefresh`, on the same triggers. It does not refresh the UI: the mark
@@ -291,7 +337,7 @@ const SWEEP_INTERVAL_MS = 30 * 1000;
 export async function sweepAndRefresh(): Promise<void> {
   const touched = await sweepExpired();
   const loaded = useStore.getState().entries;
-  for (const model of touched) {
+  for (const model of affectedModels(touched)) {
     if (loaded[model] !== undefined) await loadEntries(model);
   }
 }

@@ -23,9 +23,10 @@ application fields or model names.
 
 | Model | Merge | Audience | Inbound authorization |
 |---|---|---|---|
-| `directMessage` | REPLACE | conversation | conversation names self and sender |
+| `directMessage` | APPEND | conversation | conversation names self and sender |
 | `story` | APPEND | all accepted friends | transport-attributed sender is the author |
-| `pix` | REPLACE | conversation | conversation names self and sender |
+| `pix` | APPEND | conversation | conversation names self and sender |
+| `seen` | APPEND | conversation | conversation names self and sender; counts only if the sender is not the target's author |
 | `profile` | REPLACE | all accepted friends | ID is `profile_<senderUserId>` |
 
 `src/models/schema.ts` is the executable source of these declarations and of the
@@ -113,16 +114,20 @@ all merge behavior must tolerate replay.
 ## Expiry
 
 Direct messages and pix are ephemeral (`src/domain/expiry.ts`). When the
-recipient sees one, their device writes `viewedAt` back to the same entry id,
-which reaches every device holding it, the sender's included. Each device erases
-its own copy 15 minutes after `viewedAt`, capped at the entry's clamped
-`sentAt` so a future-dated receipt cannot extend it. Nothing is synced as a
-delete.
+recipient sees one, their device sends a separate `seen` receipt
+(`src/domain/seen.ts`, id `seen_<model>_<entryId>`) to both participants. The
+message itself is APPEND and never rewritten, so neither side can change what
+the other sent. A receipt counts only if its author is not the target's author
+and it names the target's conversation; `viewedAt` in a message payload is
+ignored. Each device erases its own copy of the entry, and the receipt, 15
+minutes after `viewedAt`, capped at the receipt's clamped `sentAt` so a
+future-dated receipt cannot extend it. Nothing is synced as a delete.
 
 Erasing uses the kit's `entryErase`, and the device records the id in the
 local-only `_erased` model first. The drain consumes, and never stores, any later
 write for an erased id, so a replay or late receipt cannot bring it back.
-Markers are pruned after 30 days. Stories and profiles do not expire.
+Markers, and receipts whose entry never arrived, are pruned after 30 days.
+Stories and profiles do not expire.
 
 ## Current gaps
 
