@@ -1,32 +1,42 @@
 name: Android Distribution
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-  workflow_dispatch:
+  push:
+    tags: ['v*-rc.*']
 
 concurrency:
-  group: android-distribution-${{ github.event.workflow_run.head_sha || github.sha }}
+  group: android-distribution-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  verify:
+    name: Verify internal release tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.tag.outputs.sha }}
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify tag and main CI
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/verify-internal-tag.sh
+
   build:
     name: Build signed APK
-    if: >-
-      (
-        github.event_name == 'workflow_dispatch' &&
-        github.ref == 'refs/heads/main'
-      ) ||
-      (
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.head_repository.full_name == github.repository
-      )
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: testing
@@ -35,7 +45,8 @@ jobs:
       apk_sha256: ${{ steps.verify.outputs.apk_sha256 }}
       sha: ${{ steps.metadata.outputs.sha }}
     env:
-      DISTRIBUTION_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
+      DISTRIBUTION_REF: ${{ needs.verify.outputs.sha }}
+      RELEASE_TAG: ${{ needs.verify.outputs.tag }}
       FIREBASE_ANDROID_APP_ID: ${{ vars.FIREBASE_ANDROID_APP_ID }}
 
     steps:
@@ -125,9 +136,13 @@ jobs:
         run: |
           set -euo pipefail
           sha="$(git rev-parse HEAD)"
+          [[ "$sha" == "$DISTRIBUTION_REF" ]] || {
+            echo "error: checkout does not match the verified tag" >&2
+            exit 1
+          }
           short_sha="$(git rev-parse --short=7 HEAD)"
           version_code="$GITHUB_RUN_NUMBER"
-          version_name="1.0.0-test.${version_code}+${short_sha}"
+          version_name="${RELEASE_TAG#v}+${short_sha}"
           artifact_name="obscura-android-${version_code}-${short_sha}"
 
           {
@@ -140,7 +155,7 @@ jobs:
 
           mkdir -p dist
           {
-            echo "Obscura Android testing build ${version_name}"
+            echo "Obscura Android internal build ${RELEASE_TAG} (${version_code})"
             echo
             git show -s --format='%s%n%nCommit: %H'
           } > dist/release-notes.txt
@@ -194,7 +209,7 @@ jobs:
 
   distribute:
     name: Distribute signed APK
-    needs: build
+    needs: [verify, build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: testing
@@ -204,7 +219,7 @@ jobs:
     env:
       ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
       BUILD_SHA: ${{ needs.build.outputs.sha }}
-      EXPECTED_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
+      EXPECTED_REF: ${{ needs.verify.outputs.sha }}
       EXPECTED_SHA256: ${{ needs.build.outputs.apk_sha256 }}
       FIREBASE_ANDROID_APP_ID: ${{ vars.FIREBASE_ANDROID_APP_ID }}
       FIREBASE_TESTER_GROUP: ${{ vars.FIREBASE_TESTER_GROUP }}
@@ -213,7 +228,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ needs.verify.outputs.sha }}
           persist-credentials: false
 
       - uses: actions/download-artifact@v7
