@@ -1,0 +1,52 @@
+name: Release internal build
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: release-internal
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify main and CI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.release.outputs.sha }}
+      build_number: ${{ steps.release.outputs.build_number }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Verify selected commit
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/verify-internal-build.sh
+
+  android:
+    needs: verify
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/android-distribution.yml
+    with:
+      sha: ${{ needs.verify.outputs.sha }}
+      build_number: ${{ needs.verify.outputs.build_number }}
+    secrets: inherit
+
+  ios:
+    needs: verify
+    uses: ./.github/workflows/ios.yml
+    with:
+      sha: ${{ needs.verify.outputs.sha }}
+      build_number: ${{ needs.verify.outputs.build_number }}
+      version: '1.0'
+    secrets: inherit
