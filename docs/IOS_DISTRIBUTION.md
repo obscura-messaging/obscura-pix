@@ -1,12 +1,20 @@
 # iOS internal distribution
 
-Pull requests compile an unsigned iOS Debug simulator build. Successful `main`
-JavaScript CI runs trigger `.github/workflows/ios.yml` to archive the tested
-commit once for an iOS device, export a signed IPA, and retain the IPA and dSYMs
-as a GitHub artifact for 30 days. A separate job verifies the same IPA and
-uploads it to App Store Connect for internal TestFlight testing. iOS distribution
-does not gate Android distribution. Maintainers can also dispatch the iOS
-workflow manually for the current `main` commit.
+Pull requests compile an unsigned iOS Debug simulator build; ordinary `main`
+pushes run JavaScript CI without distributing to testers. An Obscura owner
+selects **Actions → Release / Internal → Run workflow** on `main` after
+`main` CI succeeds. That workflow verifies the initiator, selected commit,
+and CI result before calling `.github/workflows/internal-ios.yml` to archive the commit
+once for an iOS device, export a signed IPA, and retain the IPA and dSYMs as
+a GitHub artifact for 30 days. A separate job
+verifies the same IPA and uploads it to App Store Connect for internal TestFlight.
+Android distribution runs independently. No tag or production release is created.
+
+The internal marketing version remains `1.0` and the build number is 1000
+plus the release workflow run number, avoiding collisions with previously
+uploaded builds. An already-uploaded build cannot be replaced under the same
+version/build number; retry a failed upload job, or start a new release run.
+A future store release needs a deliberate version and promotion flow.
 
 An App Store Connect upload is not an App Store release. Apple must finish
 processing the build before testers can install it. Assign the build to an
@@ -15,6 +23,13 @@ Internal testers must be App Store Connect users. The exported build is **not**
 marked TestFlight Internal Only, so the same build can later be selected for
 external testing or App Store review if the app is ready. External testing can
 require Apple's beta review; builds expire after 90 days.
+
+The Account Holder completed Apple's export-compliance questionnaire for the
+first build, and App Store Connect recorded `usesNonExemptEncryption: false`.
+`ITSAppUsesNonExemptEncryption = NO` in `Info.plist` reflects that determination
+for subsequent uploads. Revisit the determination before distributing builds
+if the app's encryption or applicable requirements change; the build pipeline
+must not guess an exemption.
 
 ## Apple signing
 
@@ -36,7 +51,10 @@ ordinary `just ios-build` recipe still prepares the simulator FFI.
 
 ## GitHub environment
 
-The `ios-testflight` environment permits only `main` deployments. It contains:
+The `ios-testflight` environment permits only `main` deployments. The
+manually dispatched workflow checks the initiating and rerunning actor,
+current `main` commit, and successful `main` CI before the signing or upload
+jobs start. It contains:
 
 | Variable | Purpose |
 |---|---|
