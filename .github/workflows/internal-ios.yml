@@ -1,82 +1,24 @@
-name: iOS CI
+name: Internal / iOS
 
 on:
-  pull_request:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-  workflow_dispatch:
-
-concurrency:
-  group: ios-ci-${{ github.event.workflow_run.head_sha || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+      build_number:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
-  ios:
-    name: iOS Debug Build
-    if: github.event_name == 'pull_request'
-    runs-on: macos-26
-    env:
-      LIBSIGNAL_REF: 7ef4efdb85d8b2ebd77f3cf1e2b542a2115033c5
-    steps:
-      - name: Checkout Pix and native dependencies
-        uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
-      - uses: extractions/setup-just@v4
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios-sim
-
-      - name: Select latest Xcode
-        run: |
-          sudo xcode-select -s "$(
-            find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' -print |
-              sort -V |
-              tail -n 1
-          )"
-
-      - name: Cache libsignal source and simulator FFI
-        id: libsignal
-        uses: actions/cache@v6
-        with:
-          path: obscura-native/swift/vendored/libsignal
-          key: libsignal-${{ env.LIBSIGNAL_REF }}-ios-sim-macos26
-
-      - name: Install protobuf
-        run: brew list protobuf >/dev/null 2>&1 || brew install protobuf
-
-      - run: just install
-
-      - name: Install CocoaPods
-        run: sudo gem install cocoapods -v 1.17.0 -N
-
-      - name: Build arm64 iOS app
-        run: just ios-build arm64
-
   archive:
     name: Signed iOS archive
-    if: >-
-      (
-        github.event_name == 'workflow_dispatch' &&
-        github.ref == 'refs/heads/main'
-      ) ||
-      (
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.head_repository.full_name == github.repository
-      )
     runs-on: macos-26
     timeout-minutes: 90
     environment: ios-testflight
@@ -85,7 +27,9 @@ jobs:
       ipa_sha256: ${{ steps.stage.outputs.ipa_sha256 }}
       sha: ${{ steps.metadata.outputs.sha }}
     env:
-      DISTRIBUTION_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
+      DISTRIBUTION_REF: ${{ inputs.sha }}
+      BUILD_NUMBER: ${{ inputs.build_number }}
+      RELEASE_VERSION: ${{ inputs.version }}
       LIBSIGNAL_REF: 7ef4efdb85d8b2ebd77f3cf1e2b542a2115033c5
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       APPLE_BUNDLE_ID: ${{ vars.APPLE_BUNDLE_ID }}
@@ -187,21 +131,21 @@ jobs:
             exit 1
           }
           short_sha="$(git rev-parse --short=7 HEAD)"
-          artifact_name="obscura-ios-${GITHUB_RUN_NUMBER}-${short_sha}"
+          artifact_name="obscura-ios-${BUILD_NUMBER}-${short_sha}"
           {
             echo "sha=$sha"
             echo "artifact_name=$artifact_name"
           } >> "$GITHUB_OUTPUT"
           mkdir -p dist
           {
-            echo "Obscura iOS internal build 1.0 (${GITHUB_RUN_NUMBER})"
+            echo "Obscura iOS internal build ${RELEASE_VERSION} (${BUILD_NUMBER})"
             echo
             git show -s --format='%s%n%nCommit: %H'
           } > dist/release-notes.txt
 
       - name: Build and export device archive
         run: |
-          just ios-archive "$RUNNER_TEMP/Obscura.xcarchive" "$GITHUB_RUN_NUMBER"
+          just ios-archive "$RUNNER_TEMP/Obscura.xcarchive" "$BUILD_NUMBER" "$RELEASE_VERSION"
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/Obscura.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" \
@@ -219,8 +163,10 @@ jobs:
           unzip -p "$ipa" Payload/Obscura.app/Info.plist > "$RUNNER_TEMP/exported-info.plist"
           bundle_id="$(plutil -extract CFBundleIdentifier raw -o - "$RUNNER_TEMP/exported-info.plist")"
           build_number="$(plutil -extract CFBundleVersion raw -o - "$RUNNER_TEMP/exported-info.plist")"
-          [[ "$bundle_id" == "$APPLE_BUNDLE_ID" && "$build_number" == "$GITHUB_RUN_NUMBER" ]] || {
-            echo "error: exported IPA has the wrong bundle ID or build number" >&2
+          version="$(plutil -extract CFBundleShortVersionString raw -o - "$RUNNER_TEMP/exported-info.plist")"
+          [[ "$bundle_id" == "$APPLE_BUNDLE_ID" && "$build_number" == "$BUILD_NUMBER" &&
+             "$version" == "$RELEASE_VERSION" ]] || {
+            echo "error: exported IPA has the wrong bundle ID or release version" >&2
             exit 1
           }
           [[ -d "$RUNNER_TEMP/Obscura.xcarchive/dSYMs" ]] || {
@@ -247,7 +193,7 @@ jobs:
     environment: ios-testflight
     env:
       BUILD_SHA: ${{ needs.archive.outputs.sha }}
-      EXPECTED_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
+      EXPECTED_REF: ${{ inputs.sha }}
       EXPECTED_SHA256: ${{ needs.archive.outputs.ipa_sha256 }}
       APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
@@ -260,7 +206,7 @@ jobs:
               tail -n 1
           )"
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: ${{ needs.archive.outputs.artifact_name }}
           path: dist/

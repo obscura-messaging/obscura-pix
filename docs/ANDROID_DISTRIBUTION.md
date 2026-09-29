@@ -1,16 +1,17 @@
 # Android testing distribution
 
-Successful `main` JavaScript CI runs trigger `.github/workflows/android-distribution.yml`.
-The workflow builds the exact tested commit once as a signed, minified universal
+PR and `main` CI do not distribute builds. When an internal build is wanted,
+an Obscura owner selects **Actions → Release / Internal → Run workflow**
+on `main`. This single workflow checks that the selected commit is the current
+`main` tip with successful `main` CI, then starts Android and iOS independently.
+Its Android job builds the selected commit once as a signed, minified universal
 APK, retains the APK and release notes as a GitHub artifact for 30 days, and
 passes that same verified APK to a separate job for Firebase App Distribution.
-iOS CI runs independently and does not gate Android testing delivery.
-Maintainers can also run the distribution workflow manually for the current
-`main` commit.
+iOS distribution does not gate Android testing delivery. The internal build
+does not create a tag or publish to an app store.
 
 Pull requests never receive distribution credentials. Their Android CI build
-uses the checked-in Firebase stub and debug signing as a compile gate; no
-compile-only Android build is repeated on `main`.
+uses the checked-in Firebase stub and debug signing as a compile gate.
 
 ## Firebase
 
@@ -55,14 +56,16 @@ just android-distribution 1 1.0.0-test.1
 Unlike `just android-release`, this command fails if signing, version metadata,
 or the real Firebase configuration is missing.
 
-## GitHub testing environment
+## GitHub `android-internal` environment
 
-Create a `testing` environment without required reviewers when every successful
-`main` build should distribute automatically. Configure its deployment branches
-to allow only `main`; a workflow selected from another branch must not receive
-the signing secrets.
+The `android-internal` environment allows only `main`. The manually dispatched
+workflow verifies the initiating and rerunning actor, current `main` commit,
+and successful CI before either build or delivery can access signing secrets.
+Android version codes start at 1001 (1000 plus the release workflow run number)
+to avoid collisions with earlier builds. Do not rerun an already-uploaded full
+release; retry failed jobs or start a new release run instead.
 
-Configure these environment variables:
+Configure these `android-internal` environment variables:
 
 | Variable | Purpose |
 |---|---|
@@ -71,7 +74,7 @@ Configure these environment variables:
 | `FIREBASE_ANDROID_APP_ID` | Firebase Android App ID. |
 | `FIREBASE_TESTER_GROUP` | Firebase App Distribution group alias. |
 
-Configure these environment secrets:
+Configure these `android-internal` environment secrets:
 
 | Secret | Purpose |
 |---|---|
@@ -93,17 +96,18 @@ Restrict the provider to `obscura-messaging/obscura-pix`, grant the repository p
 `roles/iam.workloadIdentityUser` on a dedicated service account, and grant that
 service account `roles/firebaseappdistro.admin` in the Firebase project.
 
-The provider's attribute condition must require all three claims:
+The provider's attribute condition must require the following claims:
 
 ```text
 assertion.repository == 'obscura-messaging/obscura-pix' &&
 assertion.ref == 'refs/heads/main' &&
-assertion.workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/android-distribution.yml@refs/heads/main'
+assertion.event_name == 'workflow_dispatch' &&
+assertion.workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/release-internal.yml@refs/heads/main' &&
+assertion.job_workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/internal-android.yml@refs/heads/main'
 ```
 
-Use `workflow_ref`, not `job_workflow_ref`: the latter is only present for jobs
-using a reusable workflow. Repository-only conditions are too broad because
-another branch or workflow could otherwise request a distribution token.
+The condition must match both the manually dispatched calling workflow and
+the reusable Android workflow; repository-only conditions are too broad.
 
 Do not create a long-lived service-account JSON key for GitHub Actions.
 
@@ -113,7 +117,6 @@ Firebase emails newly added testers an invitation. After accepting it, a tester
 can install the latest build from the Firebase App Tester page. Later builds
 signed with the same key update the existing app.
 
-The workflow summary links to the retained GitHub artifact as a fallback. A
-manual run is appropriate for rebuilding the current `main` commit; normal
-pushes use the post-CI trigger. Re-run the original distribution workflow when
-retrying an older tested commit.
+The workflow summary links to the retained GitHub artifact as a fallback.
+Use a separate versioned release-candidate process when preparing a future
+Google Play build; the internal Firebase APK is not a Play-ready AAB.

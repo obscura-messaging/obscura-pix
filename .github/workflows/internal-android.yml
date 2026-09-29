@@ -1,14 +1,14 @@
-name: Android Distribution
+name: Internal / Android
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-  workflow_dispatch:
-
-concurrency:
-  group: android-distribution-${{ github.event.workflow_run.head_sha || github.sha }}
-  cancel-in-progress: false
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+      build_number:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -16,26 +16,16 @@ permissions:
 jobs:
   build:
     name: Build signed APK
-    if: >-
-      (
-        github.event_name == 'workflow_dispatch' &&
-        github.ref == 'refs/heads/main'
-      ) ||
-      (
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.head_repository.full_name == github.repository
-      )
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    environment: testing
+    environment: android-internal
     outputs:
       artifact_name: ${{ steps.metadata.outputs.artifact_name }}
       apk_sha256: ${{ steps.verify.outputs.apk_sha256 }}
       sha: ${{ steps.metadata.outputs.sha }}
     env:
-      DISTRIBUTION_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
+      DISTRIBUTION_REF: ${{ inputs.sha }}
+      BUILD_NUMBER: ${{ inputs.build_number }}
       FIREBASE_ANDROID_APP_ID: ${{ vars.FIREBASE_ANDROID_APP_ID }}
 
     steps:
@@ -52,7 +42,7 @@ jobs:
           node-version-file: '.nvmrc'
           cache: npm
 
-      - uses: actions/setup-java@v6.0.0
+      - uses: actions/setup-java@v6.0.1
         with:
           distribution: temurin
           java-version: '21'
@@ -81,7 +71,7 @@ jobs:
             FIREBASE_ANDROID_APP_ID
           do
             [[ -n "${!name:-}" ]] || {
-              echo "error: required testing environment value $name is missing" >&2
+              echo "error: required android-internal environment value $name is missing" >&2
               exit 1
             }
           done
@@ -125,9 +115,13 @@ jobs:
         run: |
           set -euo pipefail
           sha="$(git rev-parse HEAD)"
+          [[ "$sha" == "$DISTRIBUTION_REF" ]] || {
+            echo "error: checkout does not match the verified main commit" >&2
+            exit 1
+          }
           short_sha="$(git rev-parse --short=7 HEAD)"
-          version_code="$GITHUB_RUN_NUMBER"
-          version_name="1.0.0-test.${version_code}+${short_sha}"
+          version_code="$BUILD_NUMBER"
+          version_name="1.0.0-internal.${version_code}+${short_sha}"
           artifact_name="obscura-android-${version_code}-${short_sha}"
 
           {
@@ -140,7 +134,7 @@ jobs:
 
           mkdir -p dist
           {
-            echo "Obscura Android testing build ${version_name}"
+            echo "Obscura Android internal build ${version_name}"
             echo
             git show -s --format='%s%n%nCommit: %H'
           } > dist/release-notes.txt
@@ -197,14 +191,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: testing
+    environment: android-internal
     permissions:
       contents: read
       id-token: write
     env:
       ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
       BUILD_SHA: ${{ needs.build.outputs.sha }}
-      EXPECTED_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
+      EXPECTED_REF: ${{ inputs.sha }}
       EXPECTED_SHA256: ${{ needs.build.outputs.apk_sha256 }}
       FIREBASE_ANDROID_APP_ID: ${{ vars.FIREBASE_ANDROID_APP_ID }}
       FIREBASE_TESTER_GROUP: ${{ vars.FIREBASE_TESTER_GROUP }}
@@ -213,10 +207,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ inputs.sha }}
           persist-credentials: false
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build.outputs.artifact_name }}
           path: dist/
@@ -237,7 +231,7 @@ jobs:
             GCP_SERVICE_ACCOUNT
           do
             [[ -n "${!name:-}" ]] || {
-              echo "error: required testing environment value $name is missing" >&2
+              echo "error: required android-internal environment value $name is missing" >&2
               exit 1
             }
           done
