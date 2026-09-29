@@ -1,20 +1,20 @@
 # iOS internal distribution
 
 Pull requests compile an unsigned iOS Debug simulator build; ordinary `main`
-pushes run JavaScript CI without distributing to testers. An organization
-owner creates a release-candidate tag such as `v1.0.0-rc.1` after the tagged
-commit passes `main` CI. That tag automatically triggers `.github/workflows/ios.yml`
-to archive the tagged commit once for an iOS device, export a signed IPA, and
-retain the IPA and dSYMs as a GitHub artifact for 30 days. A separate job
+pushes run JavaScript CI without distributing to testers. An Obscura owner
+selects **Actions → Release internal build → Run workflow** on `main` after
+`main` CI succeeds. That workflow verifies the initiator, selected commit,
+and CI result before calling `.github/workflows/ios.yml` to archive the commit
+once for an iOS device, export a signed IPA, and retain the IPA and dSYMs as
+a GitHub artifact for 30 days. A separate job
 verifies the same IPA and uploads it to App Store Connect for internal TestFlight.
-Android distribution runs independently. Do not move or reuse candidate tags;
-create a new tag for each candidate.
+Android distribution runs independently. No tag or production release is created.
 
-The tag's `X.Y.Z` becomes the iOS marketing version and the workflow run number
-becomes the build number. Apple may reject a new version or a duplicate build
-number; a successful upload cannot be repeated with another binary under the
-same version/build number. The tag is an internal candidate, not an App Store
-publication.
+The internal marketing version remains `1.0` and the build number is 1000
+plus the release workflow run number, avoiding collisions with previously
+uploaded builds. An already-uploaded build cannot be replaced under the same
+version/build number; retry a failed upload job, or start a new release run.
+A future store release needs a deliberate version and promotion flow.
 
 An App Store Connect upload is not an App Store release. Apple must finish
 processing the build before testers can install it. Assign the build to an
@@ -51,9 +51,10 @@ ordinary `just ios-build` recipe still prepares the simulator FFI.
 
 ## GitHub environment
 
-The `ios-testflight` environment permits only `v*` tag deployments. The
-workflow checks the full `vX.Y.Z-rc.N` format, ancestry on `main`, and a
-successful `main` CI run before the signing or upload jobs start. It contains:
+The `ios-testflight` environment permits only `main` deployments. The
+manually dispatched workflow checks the initiating and rerunning actor,
+current `main` commit, and successful `main` CI before the signing or upload
+jobs start. It contains:
 
 | Variable | Purpose |
 |---|---|

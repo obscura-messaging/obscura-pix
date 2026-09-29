@@ -2,11 +2,20 @@ name: iOS CI
 
 on:
   pull_request:
-  push:
-    tags: ['v*-rc.*']
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+      build_number:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
 
 concurrency:
-  group: ios-ci-${{ github.ref }}
+  group: ios-ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -62,32 +71,9 @@ jobs:
       - name: Build arm64 iOS app
         run: just ios-build arm64
 
-  verify:
-    name: Verify internal release tag
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-    outputs:
-      sha: ${{ steps.tag.outputs.sha }}
-      tag: ${{ steps.tag.outputs.tag }}
-      version: ${{ steps.tag.outputs.version }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Verify tag and main CI
-        id: tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/verify-internal-tag.sh
-
   archive:
     name: Signed iOS archive
-    needs: verify
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-26
     timeout-minutes: 90
     environment: ios-testflight
@@ -96,9 +82,9 @@ jobs:
       ipa_sha256: ${{ steps.stage.outputs.ipa_sha256 }}
       sha: ${{ steps.metadata.outputs.sha }}
     env:
-      DISTRIBUTION_REF: ${{ needs.verify.outputs.sha }}
-      RELEASE_TAG: ${{ needs.verify.outputs.tag }}
-      RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+      DISTRIBUTION_REF: ${{ inputs.sha }}
+      BUILD_NUMBER: ${{ inputs.build_number }}
+      RELEASE_VERSION: ${{ inputs.version }}
       LIBSIGNAL_REF: 7ef4efdb85d8b2ebd77f3cf1e2b542a2115033c5
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       APPLE_BUNDLE_ID: ${{ vars.APPLE_BUNDLE_ID }}
@@ -200,21 +186,21 @@ jobs:
             exit 1
           }
           short_sha="$(git rev-parse --short=7 HEAD)"
-          artifact_name="obscura-ios-${GITHUB_RUN_NUMBER}-${short_sha}"
+          artifact_name="obscura-ios-${BUILD_NUMBER}-${short_sha}"
           {
             echo "sha=$sha"
             echo "artifact_name=$artifact_name"
           } >> "$GITHUB_OUTPUT"
           mkdir -p dist
           {
-            echo "Obscura iOS internal build ${RELEASE_TAG} (${GITHUB_RUN_NUMBER})"
+            echo "Obscura iOS internal build ${RELEASE_VERSION} (${BUILD_NUMBER})"
             echo
             git show -s --format='%s%n%nCommit: %H'
           } > dist/release-notes.txt
 
       - name: Build and export device archive
         run: |
-          just ios-archive "$RUNNER_TEMP/Obscura.xcarchive" "$GITHUB_RUN_NUMBER" "$RELEASE_VERSION"
+          just ios-archive "$RUNNER_TEMP/Obscura.xcarchive" "$BUILD_NUMBER" "$RELEASE_VERSION"
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/Obscura.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" \
@@ -233,7 +219,7 @@ jobs:
           bundle_id="$(plutil -extract CFBundleIdentifier raw -o - "$RUNNER_TEMP/exported-info.plist")"
           build_number="$(plutil -extract CFBundleVersion raw -o - "$RUNNER_TEMP/exported-info.plist")"
           version="$(plutil -extract CFBundleShortVersionString raw -o - "$RUNNER_TEMP/exported-info.plist")"
-          [[ "$bundle_id" == "$APPLE_BUNDLE_ID" && "$build_number" == "$GITHUB_RUN_NUMBER" &&
+          [[ "$bundle_id" == "$APPLE_BUNDLE_ID" && "$build_number" == "$BUILD_NUMBER" &&
              "$version" == "$RELEASE_VERSION" ]] || {
             echo "error: exported IPA has the wrong bundle ID or release version" >&2
             exit 1
@@ -256,13 +242,13 @@ jobs:
 
   testflight:
     name: Upload to TestFlight
-    needs: [verify, archive]
+    needs: archive
     runs-on: macos-26
     timeout-minutes: 45
     environment: ios-testflight
     env:
       BUILD_SHA: ${{ needs.archive.outputs.sha }}
-      EXPECTED_REF: ${{ needs.verify.outputs.sha }}
+      EXPECTED_REF: ${{ inputs.sha }}
       EXPECTED_SHA256: ${{ needs.archive.outputs.ipa_sha256 }}
       APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}

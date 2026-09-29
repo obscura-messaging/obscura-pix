@@ -48,8 +48,8 @@ requirements. Push delivery cannot be validated on the simulator.
 The independent `.github/workflows/ios.yml` workflow builds the libsignal
 simulator FFI, prepares the local Swift package, installs pods, and builds
 `Obscura.xcworkspace` for a generic simulator on pull requests. Its PR check
-is required for merging. Release-candidate tags on tested `main` commits
-build a signed device archive once and upload the verified IPA to internal
+is required for merging. A manually requested internal release on tested `main`
+builds a signed device archive once and uploads the verified IPA to internal
 TestFlight; see
 [`IOS_DISTRIBUTION.md`](IOS_DISTRIBUTION.md). iOS does not block Android
 testing distribution.

@@ -1,15 +1,14 @@
 # Android testing distribution
 
-PR and `main` CI do not distribute builds. An organization owner creates a tag
-such as `v1.0.0-rc.1` on a commit already on `main` with successful `main` CI.
-The tag automatically triggers `.github/workflows/android-distribution.yml`
-and the independent iOS TestFlight workflow. The Android workflow builds the
-tagged commit once as a signed, minified universal
+PR and `main` CI do not distribute builds. When an internal build is wanted,
+an Obscura owner selects **Actions → Release internal build → Run workflow**
+on `main`. This single workflow checks that the selected commit is the current
+`main` tip with successful `main` CI, then starts Android and iOS independently.
+Its Android job builds the selected commit once as a signed, minified universal
 APK, retains the APK and release notes as a GitHub artifact for 30 days, and
 passes that same verified APK to a separate job for Firebase App Distribution.
-iOS distribution does not gate Android testing delivery. Tags may not be
-replaced or reused; wait for the tagged commit's `main` CI to pass before
-creating one. The tag names a release candidate, not a production release.
+iOS distribution does not gate Android testing delivery. The internal build
+does not create a tag or publish to an app store.
 
 Pull requests never receive distribution credentials. Their Android CI build
 uses the checked-in Firebase stub and debug signing as a compile gate.
@@ -59,10 +58,12 @@ or the real Firebase configuration is missing.
 
 ## GitHub testing environment
 
-The `testing` environment is restricted to release-candidate tags (`v*`).
-The workflow validates the full `vX.Y.Z-rc.N` format, the tag target on `main`,
-and successful `main` CI before either build or delivery can access the
-signing secrets.
+The `testing` environment allows only `main`. The manually dispatched
+workflow verifies the initiating and rerunning actor, current `main` commit,
+and successful CI before either build or delivery can access signing secrets.
+Android version codes start at 1001 (1000 plus the release workflow run number)
+to avoid collisions with earlier builds. Do not rerun an already-uploaded full
+release; retry failed jobs or start a new release run instead.
 
 Configure these environment variables:
 
@@ -99,13 +100,14 @@ The provider's attribute condition must require all three claims:
 
 ```text
 assertion.repository == 'obscura-messaging/obscura-pix' &&
-assertion.ref.matches('^refs/tags/v[0-9]+[.][0-9]+[.][0-9]+-rc[.][1-9][0-9]*$') &&
-assertion.workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/android-distribution.yml@' + assertion.ref
+assertion.ref == 'refs/heads/main' &&
+assertion.event_name == 'workflow_dispatch' &&
+assertion.workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/release-internal.yml@refs/heads/main' &&
+assertion.job_workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/android-distribution.yml@refs/heads/main'
 ```
 
-Use `workflow_ref`, not `job_workflow_ref`: the latter is only present for jobs
-using a reusable workflow. The condition must match the exact tagged workflow
-as well as the tag pattern; a repository-only condition is too broad.
+The condition must match both the manually dispatched calling workflow and
+the reusable Android workflow; repository-only conditions are too broad.
 
 Do not create a long-lived service-account JSON key for GitHub Actions.
 
@@ -116,5 +118,5 @@ can install the latest build from the Firebase App Tester page. Later builds
 signed with the same key update the existing app.
 
 The workflow summary links to the retained GitHub artifact as a fallback.
-Retry a failed job from the same tag/run; for a new candidate, create a new
-tag rather than moving or deleting a published tag.
+Use a separate versioned release-candidate process when preparing a future
+Google Play build; the internal Firebase APK is not a Play-ready AAB.
