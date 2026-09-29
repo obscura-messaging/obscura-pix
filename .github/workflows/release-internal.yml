@@ -1,4 +1,4 @@
-name: Release internal build
+name: Release / Internal
 
 on:
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: ./.github/workflows/android-distribution.yml
+    uses: ./.github/workflows/internal-android.yml
     with:
       sha: ${{ needs.verify.outputs.sha }}
       build_number: ${{ needs.verify.outputs.build_number }}
@@ -44,7 +44,7 @@ jobs:
 
   ios:
     needs: verify
-    uses: ./.github/workflows/ios.yml
+    uses: ./.github/workflows/internal-ios.yml
     with:
       sha: ${{ needs.verify.outputs.sha }}
       build_number: ${{ needs.verify.outputs.build_number }}

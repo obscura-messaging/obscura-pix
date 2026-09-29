@@ -2,9 +2,9 @@
 
 Pull requests compile an unsigned iOS Debug simulator build; ordinary `main`
 pushes run JavaScript CI without distributing to testers. An Obscura owner
-selects **Actions → Release internal build → Run workflow** on `main` after
+selects **Actions → Release / Internal → Run workflow** on `main` after
 `main` CI succeeds. That workflow verifies the initiator, selected commit,
-and CI result before calling `.github/workflows/ios.yml` to archive the commit
+and CI result before calling `.github/workflows/internal-ios.yml` to archive the commit
 once for an iOS device, export a signed IPA, and retain the IPA and dSYMs as
 a GitHub artifact for 30 days. A separate job
 verifies the same IPA and uploads it to App Store Connect for internal TestFlight.

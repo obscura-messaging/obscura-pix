@@ -1,4 +1,4 @@
-name: Android Distribution
+name: Internal / Android
 
 on:
   workflow_call:
@@ -18,7 +18,7 @@ jobs:
     name: Build signed APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    environment: testing
+    environment: android-internal
     outputs:
       artifact_name: ${{ steps.metadata.outputs.artifact_name }}
       apk_sha256: ${{ steps.verify.outputs.apk_sha256 }}
@@ -191,7 +191,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: testing
+    environment: android-internal
     permissions:
       contents: read
       id-token: write
