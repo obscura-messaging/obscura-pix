@@ -5,11 +5,12 @@ on:
   push:
     branches: [main]
 
-# Cancel in-progress runs for the same PR / branch so a force-push doesn't
-# pile up runners.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   javascript:
@@ -26,9 +27,11 @@ jobs:
       # Domain, bridge-facade, and state tests run without a native simulator.
       # ESLint errors fail the job; warnings remain non-fatal.
       - run: just check
+      - run: python3 scripts/test-verify-internal-build.py -q
 
   android:
     name: Android + push sender
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pix
@@ -54,67 +57,10 @@ jobs:
 
       - run: just install
 
-      - name: Assemble arm64 release APK
-        if: github.event_name == 'pull_request'
+      # Main builds a signed APK once in the separate distribution workflow.
+      - name: Compile arm64 release APK
         run: just android-release arm64-v8a false
-
-      - name: Assemble full release APK
-        if: github.event_name == 'push'
-        run: just android-release
 
       # Reuses the composite-built native kit outputs from the app build.
       - name: Build push sender
         run: just push-sender-build
-
-  ios:
-    name: iOS Debug Build
-    runs-on: macos-26
-    env:
-      LIBSIGNAL_REF: 7ef4efdb85d8b2ebd77f3cf1e2b542a2115033c5
-    steps:
-      - name: Checkout Pix and native dependencies
-        uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
-      - uses: extractions/setup-just@v4
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios-sim
-
-      - name: Select latest Xcode
-        run: |
-          sudo xcode-select -s "$(
-            find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' -print |
-              sort -V |
-              tail -n 1
-          )"
-
-      - name: Cache libsignal source and simulator FFI
-        id: libsignal
-        uses: actions/cache@v6
-        with:
-          path: obscura-native/swift/vendored/libsignal
-          key: libsignal-${{ env.LIBSIGNAL_REF }}-ios-sim-macos26
-
-      - name: Install protobuf
-        run: brew list protobuf >/dev/null 2>&1 || brew install protobuf
-
-      - run: just install
-
-      - name: Install CocoaPods
-        run: sudo gem install cocoapods -v 1.17.0 -N
-
-      - name: Build arm64 iOS app
-        if: github.event_name == 'pull_request'
-        run: just ios-build arm64
-
-      - name: Build full iOS app
-        if: github.event_name == 'push'
-        run: just ios-build

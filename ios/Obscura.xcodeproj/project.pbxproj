@@ -334,7 +334,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Obscura/Obscura.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = KY4LCG34B8;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -361,6 +362,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = dev.barrelmaker.obscura;
 				PRODUCT_NAME = Obscura;
+				PROVISIONING_PROFILE_SPECIFIER = "Obscura App Store";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
