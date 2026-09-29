@@ -56,7 +56,7 @@ just android-distribution 1 1.0.0-test.1
 Unlike `just android-release`, this command fails if signing, version metadata,
 or the real Firebase configuration is missing.
 
-## GitHub testing environment
+## GitHub `android-internal` environment
 
 The `android-internal` environment allows only `main`. The manually dispatched
 workflow verifies the initiating and rerunning actor, current `main` commit,
@@ -96,7 +96,7 @@ Restrict the provider to `obscura-messaging/obscura-pix`, grant the repository p
 `roles/iam.workloadIdentityUser` on a dedicated service account, and grant that
 service account `roles/firebaseappdistro.admin` in the Firebase project.
 
-The provider's attribute condition must require all three claims:
+The provider's attribute condition must require the following claims:
 
 ```text
 assertion.repository == 'obscura-messaging/obscura-pix' &&

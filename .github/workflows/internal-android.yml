@@ -71,7 +71,7 @@ jobs:
             FIREBASE_ANDROID_APP_ID
           do
             [[ -n "${!name:-}" ]] || {
-              echo "error: required testing environment value $name is missing" >&2
+              echo "error: required android-internal environment value $name is missing" >&2
               exit 1
             }
           done
@@ -231,7 +231,7 @@ jobs:
             GCP_SERVICE_ACCOUNT
           do
             [[ -n "${!name:-}" ]] || {
-              echo "error: required testing environment value $name is missing" >&2
+              echo "error: required android-internal environment value $name is missing" >&2
               exit 1
             }
           done

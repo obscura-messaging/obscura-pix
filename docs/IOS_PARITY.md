@@ -1,8 +1,8 @@
 # iOS status
 
-The repository contains an iOS React Native scaffold and Swift bridge backed by
-`obscura-native/swift`. It builds in CI and has completed a physical
-Android↔iOS interoperability pass for auth, friendship, entries, typing,
+The iOS React Native app and Swift bridge (`obscura-native/swift`) build in CI
+and produce signed internal TestFlight builds. Physical Android↔iOS
+interoperability has been exercised for auth, friendship, entries, typing,
 attachments, Pix/view receipts, offline queues, cold starts, and reconnects.
 It is not production-ready.
 
@@ -58,9 +58,10 @@ testing distribution.
 
 A provisioned device has exercised authentication restore, friend acceptance,
 entry round trips, typing, attachments, Pix/view receipts, disconnected queues,
-cold starts, and reconnect idempotence. Remaining device work is Swift link
-approval receipt, real app background/foreground automation, FCM-via-APNs
-delivery, notification privacy, and release signing.
+cold starts, and reconnect idempotence. A TestFlight build was installed and
+smoke-tested for launch, login, and foreground messaging. Remaining device
+work is Swift link approval receipt, background/foreground automation,
+FCM-via-APNs delivery, and notification privacy.
 
 ## Local development
 
@@ -68,5 +69,5 @@ See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the complete setup and build
 commands.
 
 Do not infer production support from the build gate or foreground interop pass.
-Until real-device push and TestFlight installation are verified, Android
-remains the only production-ready platform.
+Until push and the remaining device gaps are verified, Android remains the
+only production-ready platform.
