@@ -1,7 +1,7 @@
 # Android testing distribution
 
 PR and `main` CI do not distribute builds. When an internal build is wanted,
-an Obscura owner selects **Actions → Release internal build → Run workflow**
+an Obscura owner selects **Actions → Release / Internal → Run workflow**
 on `main`. This single workflow checks that the selected commit is the current
 `main` tip with successful `main` CI, then starts Android and iOS independently.
 Its Android job builds the selected commit once as a signed, minified universal
@@ -58,14 +58,14 @@ or the real Firebase configuration is missing.
 
 ## GitHub testing environment
 
-The `testing` environment allows only `main`. The manually dispatched
+The `android-internal` environment allows only `main`. The manually dispatched
 workflow verifies the initiating and rerunning actor, current `main` commit,
 and successful CI before either build or delivery can access signing secrets.
 Android version codes start at 1001 (1000 plus the release workflow run number)
 to avoid collisions with earlier builds. Do not rerun an already-uploaded full
 release; retry failed jobs or start a new release run instead.
 
-Configure these environment variables:
+Configure these `android-internal` environment variables:
 
 | Variable | Purpose |
 |---|---|
@@ -74,7 +74,7 @@ Configure these environment variables:
 | `FIREBASE_ANDROID_APP_ID` | Firebase Android App ID. |
 | `FIREBASE_TESTER_GROUP` | Firebase App Distribution group alias. |
 
-Configure these environment secrets:
+Configure these `android-internal` environment secrets:
 
 | Secret | Purpose |
 |---|---|
@@ -103,7 +103,7 @@ assertion.repository == 'obscura-messaging/obscura-pix' &&
 assertion.ref == 'refs/heads/main' &&
 assertion.event_name == 'workflow_dispatch' &&
 assertion.workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/release-internal.yml@refs/heads/main' &&
-assertion.job_workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/android-distribution.yml@refs/heads/main'
+assertion.job_workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/internal-android.yml@refs/heads/main'
 ```
 
 The condition must match both the manually dispatched calling workflow and
