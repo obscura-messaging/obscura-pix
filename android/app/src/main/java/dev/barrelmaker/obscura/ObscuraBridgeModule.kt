@@ -458,8 +458,8 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
     }
 
     // ─── Attachments (path-based) ───────────────────────────────────────────
-    // Bytes never cross the bridge. JS hands us a file path; we read, encrypt,
-    // upload. On download, we decrypt to a deterministic cache path and return
+    // Bytes never cross the bridge. JS hands us a file path; the kit encrypts and
+    // uploads. On download, we decrypt to a deterministic cache path and return
     // that path so JS can use it directly as a `file://` URI.
 
     @ReactMethod
@@ -467,12 +467,12 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
         scope.launch {
             try {
                 val bytes = java.io.File(filePath).readBytes()
-                val encrypted = dev.barrelmaker.obscura.kit.crypto.AttachmentCrypto.encrypt(bytes)
-                val id = requireClient().uploadAttachment(encrypted.ciphertext)
+                // The kit encrypts + uploads and returns the reference triple.
+                val ref = requireClient().uploadAttachment(bytes)
                 promise.resolve(Arguments.createMap().apply {
-                    putString("id", id)
-                    putString("contentKey", Base64.encodeToString(encrypted.contentKey, Base64.NO_WRAP))
-                    putString("nonce", Base64.encodeToString(encrypted.nonce, Base64.NO_WRAP))
+                    putString("id", ref.id)
+                    putString("contentKey", Base64.encodeToString(ref.contentKey, Base64.NO_WRAP))
+                    putString("nonce", Base64.encodeToString(ref.nonce, Base64.NO_WRAP))
                 })
             } catch (e: Exception) {
                 promise.rejectKit("UPLOAD_ERROR", e)
@@ -926,6 +926,19 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
                 promise.resolve(null)
             } catch (e: Exception) {
                 promise.rejectKit("ENTRY_PUT_ERROR", e)
+            }
+        }
+    }
+
+    /** Securely remove one local entry (KIT_API §8.1). The app decides when. */
+    @ReactMethod
+    fun entryErase(model: String, id: String, promise: Promise) {
+        scope.launch {
+            try {
+                requireClient().entries.erase(model, id)
+                promise.resolve(null)
+            } catch (e: Exception) {
+                promise.rejectKit("ENTRY_ERASE_ERROR", e)
             }
         }
     }

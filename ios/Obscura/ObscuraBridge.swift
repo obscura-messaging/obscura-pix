@@ -401,6 +401,21 @@ extension ObscuraBridge {
         }
     }
 
+    /// Securely remove one local entry (KIT_API §8.1). The app decides when.
+    @objc(entryErase:id:resolver:rejecter:)
+    func entryErase(_ model: String, id: String,
+                    resolver resolve: @escaping RCTPromiseResolveBlock,
+                    rejecter reject: @escaping RCTPromiseRejectBlock) {
+        Task {
+            do {
+                try await client.entries.erase(model: model, id: id)
+                resolve(nil)
+            } catch {
+                rejectKit(reject, "ENTRY_ERASE_ERROR", error)
+            }
+        }
+    }
+
     @objc(entryAll:resolver:rejecter:)
     func entryAll(_ model: String,
                   resolver resolve: @escaping RCTPromiseResolveBlock,

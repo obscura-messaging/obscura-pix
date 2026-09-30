@@ -158,6 +158,13 @@ export class FakeObscuraBridge {
     return [...this.entryTable(model).values()].map((e) => ({ ...e }));
   }
 
+  async entryErase(model: string, id: string): Promise<void> {
+    this.record('entryErase');
+    this.checkFailure('entryErase');
+    // Missing ids are a no-op, like the kits.
+    this.entryTable(model).delete(id);
+  }
+
   async sendEntry(
     recipientUserIds: string[], modelKey: string, entryId: string,
     sentAt: number, payloadJson: string,
