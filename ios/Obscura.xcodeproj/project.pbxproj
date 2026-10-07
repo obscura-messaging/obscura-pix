@@ -17,6 +17,7 @@
 		9996910D1B340E197C5E445A /* ObscuraBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5FB779AE63B4324AD7E05E /* ObscuraBridge.swift */; };
 		A34FF72BABD2AA3D3C7298B7 /* ObscuraSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04DA4A9CC1A1B5B2D06BCF3F /* ObscuraSession.swift */; };
 		C1A7F30D5E4B8A9612340001 /* SharedContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A7F30D5E4B8A9612340002 /* SharedContainer.swift */; };
+		DED0713712B8F3517F7CA49C /* ScreenSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A752FEB31FD6E940225BE227 /* ScreenSecurity.swift */; };
 		EA12D49AABB929C53CDEC027 /* ObscuraKit in Frameworks */ = {isa = PBXBuildFile; productRef = 341F78DAE53D40FF1D97FDFB /* ObscuraKit */; };
 /* End PBXBuildFile section */
 
@@ -33,6 +34,7 @@
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Obscura/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = Obscura/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		A37E54F4484E1DFC5514BFBB /* ObscuraBridge.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = Obscura/ObscuraBridge.m; sourceTree = "<group>"; };
+		A752FEB31FD6E940225BE227 /* ScreenSecurity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ScreenSecurity.swift; path = Obscura/ScreenSecurity.swift; sourceTree = "<group>"; };
 		B389CC240177117C3ED0446C /* KeychainSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Obscura/KeychainSession.swift; sourceTree = "<group>"; };
 		C1A7F30D5E4B8A9612340002 /* SharedContainer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Obscura/SharedContainer.swift; sourceTree = "<group>"; };
 		C1A7F30D5E4B8A9612340003 /* Obscura.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = Obscura/Obscura.entitlements; sourceTree = "<group>"; };
@@ -66,6 +68,7 @@
 				04DA4A9CC1A1B5B2D06BCF3F /* ObscuraSession.swift */,
 				0A5FB779AE63B4324AD7E05E /* ObscuraBridge.swift */,
 				A37E54F4484E1DFC5514BFBB /* ObscuraBridge.m */,
+				A752FEB31FD6E940225BE227 /* ScreenSecurity.swift */,
 			);
 			name = Obscura;
 			sourceTree = "<group>";
@@ -278,6 +281,7 @@
 				A34FF72BABD2AA3D3C7298B7 /* ObscuraSession.swift in Sources */,
 				9996910D1B340E197C5E445A /* ObscuraBridge.swift in Sources */,
 				0DA5BA8067FF704BB82078F8 /* ObscuraBridge.m in Sources */,
+				DED0713712B8F3517F7CA49C /* ScreenSecurity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
