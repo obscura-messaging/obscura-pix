@@ -1,9 +1,7 @@
-name: iOS CI
+name: CI / iOS
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 concurrency:
   group: ios-ci-${{ github.ref }}
@@ -59,9 +57,4 @@ jobs:
         run: sudo gem install cocoapods -v 1.17.0 -N
 
       - name: Build arm64 iOS app
-        if: github.event_name == 'pull_request'
         run: just ios-build arm64
-
-      - name: Build full iOS app
-        if: github.event_name == 'push'
-        run: just ios-build

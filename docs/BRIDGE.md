@@ -156,6 +156,7 @@ opinion about the contents.
 | --------------------------------------------------------------------------- | ----------------------------------------------- | --------------- | --------- |
 | `entryPut(model, id, dataJson, sentAt, authorDeviceId, localMetadataJson?)` | string, string, string, number, string, string? | `void`          | both      |
 | `entryAll(model)`                                                           | string                                          | `StoredEntry[]` | both      |
+| `entryErase(model, id)`                                                     | string, string                                  | `void`          | both      |
 
 `StoredEntry = { id, data: string, sentAt, authorDeviceId, localMetadata }`. `data` is application
 JSON; `localMetadata` is opaque device-local bookkeeping and is never sent.
@@ -163,6 +164,11 @@ JSON; `localMetadata` is opaque device-local bookkeeping and is never sent.
 `entryPut` is a **BLIND upsert**: an older write overwrites a newer one, because
 by the time a write reaches the bridge the app has already decided who wins
 (`src/domain/merge.ts`). A bridge that merged would hide an app that forgot to.
+
+`entryErase` securely removes one local entry: the kit deletes under
+`secure_delete` and truncates the WAL, so the content is unrecoverable from the
+database files. Erasing a missing entry is a no-op. It is local only; the app
+decides when to erase and each device erases its own copy.
 
 **No `entriesChanged` event.** `entryPut` is a plain write and emits nothing;
 the app refreshes explicitly, because it is the app that knows what changed.

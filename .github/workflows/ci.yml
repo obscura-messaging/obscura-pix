@@ -27,6 +27,7 @@ jobs:
       # Domain, bridge-facade, and state tests run without a native simulator.
       # ESLint errors fail the job; warnings remain non-fatal.
       - run: just check
+      - run: python3 scripts/test-verify-internal-build.py -q
 
   android:
     name: Android + push sender
@@ -52,7 +53,7 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - uses: gradle/actions/setup-gradle@v6.3.0
+      - uses: gradle/actions/setup-gradle@v6.4.0
 
       - run: just install
 
