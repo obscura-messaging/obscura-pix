@@ -1,6 +1,7 @@
 package dev.barrelmaker.obscura
 
 import android.content.SharedPreferences
+import android.util.Log
 import dev.barrelmaker.obscura.kit.persistence.SessionStorage
 import org.json.JSONObject
 
@@ -52,7 +53,15 @@ class SharedPreferencesSessionStorage(
             save(legacy)
             return legacy
         }
-        val json = JSONObject(String(LocalKeystore.unwrap(wrapped), Charsets.UTF_8))
+        val plaintext = try {
+            LocalKeystore.unwrap(wrapped)
+        } catch (e: LocalKeystore.SecretUnavailableException) {
+            // The tokens are unrecoverable. Treat it as signed out rather than failing every launch.
+            Log.e(TAG, "session blob unreadable; clearing it", e)
+            clear()
+            return null
+        }
+        val json = JSONObject(String(plaintext, Charsets.UTF_8))
         return json.keys().asSequence().associateWith { json.get(it) }
     }
 
@@ -61,6 +70,7 @@ class SharedPreferencesSessionStorage(
     }
 
     private companion object {
+        const val TAG = "SessionStorage"
         const val BLOB = "session_blob"
     }
 }

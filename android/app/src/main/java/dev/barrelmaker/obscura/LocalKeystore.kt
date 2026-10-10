@@ -4,7 +4,9 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import java.io.File
+import java.security.GeneralSecurityException
 import java.security.KeyStore
 import java.security.SecureRandom
 import javax.crypto.Cipher
@@ -21,6 +23,7 @@ import javax.crypto.spec.GCMParameterSpec
  */
 object LocalKeystore {
 
+    private const val TAG = "LocalKeystore"
     private const val KEYSTORE = "AndroidKeyStore"
     private const val WRAP_ALIAS = "obscura_local_wrap"
     private const val KEYS_PREFS = "obscura_db_keys"
@@ -45,23 +48,49 @@ object LocalKeystore {
         return gen.generateKey()
     }
 
-    /** Encrypt with the Keystore key. Output is base64(iv || ciphertext+tag). */
+    /**
+     * Encrypt with the Keystore key. Output is base64(iv || ciphertext+tag).
+     *
+     * If the Keystore key exists but cannot be used (some OEM Keystores lose or corrupt keys across
+     * OS updates), everything it wrapped is already unreadable, so it is replaced rather than
+     * leaving the app unable to store any secret again.
+     */
     fun wrap(plaintext: ByteArray): String {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, wrapKey())
+        try {
+            cipher.init(Cipher.ENCRYPT_MODE, wrapKey())
+        } catch (e: GeneralSecurityException) {
+            Log.e(TAG, "Keystore wrap key unusable; replacing it", e)
+            KeyStore.getInstance(KEYSTORE).apply { load(null) }.deleteEntry(WRAP_ALIAS)
+            cipher.init(Cipher.ENCRYPT_MODE, wrapKey())
+        }
         return Base64.encodeToString(cipher.iv + cipher.doFinal(plaintext), Base64.NO_WRAP)
     }
 
+    /** @throws SecretUnavailableException if the secret cannot be recovered. */
     fun unwrap(wrapped: String): ByteArray {
-        val bytes = Base64.decode(wrapped, Base64.NO_WRAP)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(
-            Cipher.DECRYPT_MODE,
-            wrapKey(),
-            GCMParameterSpec(GCM_TAG_BITS, bytes, 0, GCM_IV_BYTES),
-        )
-        return cipher.doFinal(bytes, GCM_IV_BYTES, bytes.size - GCM_IV_BYTES)
+        try {
+            val bytes = Base64.decode(wrapped, Base64.NO_WRAP)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                wrapKey(),
+                GCMParameterSpec(GCM_TAG_BITS, bytes, 0, GCM_IV_BYTES),
+            )
+            return cipher.doFinal(bytes, GCM_IV_BYTES, bytes.size - GCM_IV_BYTES)
+        } catch (e: GeneralSecurityException) {
+            throw SecretUnavailableException(e)
+        } catch (e: IllegalArgumentException) {
+            throw SecretUnavailableException(e) // malformed base64
+        }
     }
+
+    /**
+     * A wrapped secret could not be recovered: the Keystore key is gone or unusable, or the stored
+     * blob is corrupt. Not transient, so callers recover rather than retry.
+     */
+    class SecretUnavailableException(cause: Throwable) :
+        Exception("local secret could not be unwrapped", cause)
 
     /**
      * The SQLCipher key for one user's database: 32 random bytes, created on first use.
@@ -75,10 +104,22 @@ object LocalKeystore {
         val key = prefs.getString(name, null)?.let { unwrap(it) }
             ?: ByteArray(32).also {
                 random.nextBytes(it)
-                prefs.edit().putString(name, wrap(it)).commit()
+                // A key that is not stored would encrypt a database nothing can open again.
+                check(prefs.edit().putString(name, wrap(it)).commit()) { "could not store database key" }
             }
         val hex = key.joinToString("") { "%02x".format(it) }
         return "x'$hex'".toByteArray(Charsets.US_ASCII)
+    }
+
+    /**
+     * Forget one user's database key and delete the database. Used when the database can no
+     * longer be decrypted: without its key the data is unrecoverable, so the user starts over as a
+     * new device.
+     */
+    fun discardDatabase(context: Context, username: String, dbName: String) {
+        context.getSharedPreferences(KEYS_PREFS, Context.MODE_PRIVATE)
+            .edit().remove("db_$username").commit()
+        context.deleteDatabase(dbName) // also removes -journal, -wal and -shm
     }
 
     /**

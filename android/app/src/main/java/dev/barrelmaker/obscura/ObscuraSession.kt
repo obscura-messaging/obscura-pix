@@ -2,11 +2,13 @@ package dev.barrelmaker.obscura
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.database.sqlite.SQLiteDatabaseCorruptException
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import dev.barrelmaker.obscura.kit.AuthState
 import dev.barrelmaker.obscura.kit.ConnectionState
@@ -170,12 +172,17 @@ object ObscuraSession {
         val dbName = "obscura_${username}.db"
         // SQLCipher, keyed per user from the Android Keystore (iOS: SQLCipher + Keychain).
         System.loadLibrary("sqlcipher")
-        val key = LocalKeystore.databaseKey(appContext, username)
-        LocalKeystore.encryptPlaintextDatabase(appContext, dbName, key)
-        val driver = AndroidSqliteDriver(
-            ObscuraDatabase.Schema, appContext, dbName,
-            factory = SupportOpenHelperFactory(key),
-        )
+        val driver = try {
+            openDatabase(username, dbName)
+        } catch (e: Exception) {
+            if (!isUndecryptable(e)) throw e
+            // The key is lost or the file is unreadable, so the local identity is gone either way.
+            // Start clean: the user signs in again and is provisioned as a new device.
+            Log.e(TAG, "Database for $username cannot be decrypted; discarding it", e)
+            LocalKeystore.discardDatabase(appContext, username, dbName)
+            sessionStorage.clear()
+            openDatabase(username, dbName)
+        }
         val c = ObscuraClient(
             ObscuraConfig(apiUrl = API_URL),
             externalDriver = driver,
@@ -187,6 +194,38 @@ object ObscuraSession {
         Log.d(TAG, "Client built (db=$dbName)")
         return c
     }
+
+    /**
+     * Open the user's SQLCipher database and read from it once, so a wrong or missing key fails
+     * here, where it can be recovered, rather than partway through a session.
+     */
+    private fun openDatabase(username: String, dbName: String): AndroidSqliteDriver {
+        val key = LocalKeystore.databaseKey(appContext, username)
+        LocalKeystore.encryptPlaintextDatabase(appContext, dbName, key)
+        val driver = AndroidSqliteDriver(
+            ObscuraDatabase.Schema, appContext, dbName,
+            factory = SupportOpenHelperFactory(key),
+        )
+        try {
+            driver.executeQuery(null, "SELECT count(*) FROM sqlite_master", { it.next(); QueryResult.Unit }, 0)
+        } catch (e: Exception) {
+            driver.close()
+            throw e
+        }
+        return driver
+    }
+
+    /**
+     * Whether [e] means the database can never be decrypted: a lost key, or a file SQLCipher
+     * cannot read ("file is not a database", SQLite code 26). A full disk or a locked file is
+     * transient and must not cost the user their identity.
+     */
+    private fun isUndecryptable(e: Throwable): Boolean =
+        generateSequence(e) { it.cause }.any {
+            it is LocalKeystore.SecretUnavailableException ||
+                it is SQLiteDatabaseCorruptException ||
+                it.message?.contains("file is not a database") == true
+        }
 
     /** Build a fresh client for a username (register / login entry point). */
     fun createClient(username: String): ObscuraClient = buildClient(username)
@@ -218,6 +257,12 @@ object ObscuraSession {
 
         Log.d(TAG, "Restoring session: user=$username")
         val c = buildClient(username)
+        // buildClient discards an undecryptable database together with the session; there is
+        // nothing left to restore, so stay signed out.
+        if (sessionStorage.load() == null) {
+            destroyClient()
+            return null
+        }
 
         // Kit restores tokens/deviceId, refreshes, defines cached models, connects,
         // and re-persists rotated tokens. Clears storage if the refresh token is dead.
