@@ -3,6 +3,7 @@ import { planDrain, type DrainRow } from '../domain/drain';
 import type { Entry } from '../domain/merge';
 import { modelRules } from '../models/schema';
 import { withEntryLock } from './entryLock';
+import { readEntries } from './readEntries';
 import { logError } from '../utils/log';
 
 /**
@@ -40,22 +41,7 @@ function toDrainRow(row: InboxRow): DrainRow {
 async function currentState(models: Iterable<string>): Promise<Map<string, Map<string, Entry>>> {
   const state = new Map<string, Map<string, Entry>>();
   for (const model of models) {
-    const stored = await Obscura.entryAll(model);
-    const byId = new Map<string, Entry>();
-    for (const e of stored) {
-      let data: Record<string, unknown> = {};
-      try {
-        data = JSON.parse(e.data) as Record<string, unknown>;
-      } catch {
-        // Our own stored row failed to parse. It cannot participate in a merge, but it must not stop
-        // the drain either — an unreadable local row is a bug to fix, not a reason to stop
-        // delivering everything behind it.
-        logError('drain.parseStored:' + model, new Error(`entry ${e.id} is not JSON`));
-        continue;
-      }
-      byId.set(e.id, { id: e.id, sentAt: e.sentAt, authorDeviceId: e.authorDeviceId, data });
-    }
-    state.set(model, byId);
+    state.set(model, new Map((await readEntries(model)).map((e) => [e.id, e])));
   }
   return state;
 }

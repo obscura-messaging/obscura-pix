@@ -12,24 +12,17 @@
 /** How a model reconciles two writes to the same entry id. */
 export type MergeRule = 'APPEND' | 'REPLACE';
 
-export interface Entry {
-  /** Entry id. Unique per logical item; the merge key. */
+export interface Entry<D = Record<string, unknown>> {
+  /** Unique per logical item; the merge key. */
   id: string;
-  /**
-   * When the author wrote it (ms). Peer-supplied, so it is clamped to `now + 60s` on receipt
-   * (`NATIVE_CONTRACT.md` §2.4) before it ever reaches this file.
-   */
+  /** When the author wrote it (ms). Clamped to `now + 60s` on receipt. */
   sentAt: number;
   /**
-   * The AUTHENTICATED device that wrote this — for a received entry, the address of the Signal
-   * session that decrypted it; for a local write, this device (`NATIVE_CONTRACT.md` §0.10 rule 4).
-   *
-   * It is the REPLACE tie-break, and it must never be taken from a payload field: a peer-asserted
-   * author id would let a peer win every conflict by choosing a high value.
+   * The device whose Signal session decrypted it, or this device for a local write. The REPLACE
+   * tie-break, so never taken from the payload.
    */
   authorDeviceId: string;
-  /** Model-defined content. Opaque to this file. */
-  data: Record<string, unknown>;
+  data: D;
 }
 
 /**

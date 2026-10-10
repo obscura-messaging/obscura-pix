@@ -20,10 +20,10 @@ const STRANGER = 'uStranger';
 const CONV = [SELF, PEER].sort().join('_');
 
 const models = new Map<string, ModelRules>([
-  ['directMessage', { merge: 'APPEND', conversationField: 'conversationId' }],
-  ['story', { merge: 'APPEND' }],
-  ['pix', { merge: 'REPLACE', conversationField: 'conversationId' }],
-  ['profile', { merge: 'REPLACE', ownerIdPrefix: 'profile_' }],
+  ['directMessage', { merge: 'APPEND', fields: { content: 'string' }, conversationField: 'conversationId' }],
+  ['story', { merge: 'APPEND', fields: {} }],
+  ['pix', { merge: 'REPLACE', fields: {}, conversationField: 'conversationId' }],
+  ['profile', { merge: 'REPLACE', fields: {}, ownerIdPrefix: 'profile_' }],
 ]);
 
 let nextId = 1;
@@ -420,6 +420,21 @@ describe('the empty case', () => {
 
     expect(plan.consume).toEqual([]);
     expect(plan.discard).toEqual([]);
+    expect(plan.writes.size).toBe(0);
+  });
+});
+
+describe('field validation', () => {
+  it('discards an entry whose fields do not match the declared types', () => {
+    const wrongType = row({ payload: JSON.stringify({ content: { not: 'a string' }, conversationId: CONV }) });
+    const missing = row({ payload: JSON.stringify({ conversationId: CONV }) });
+
+    const plan = planDrain([wrongType, missing], models, empty, SELF);
+
+    expect(plan.discard).toEqual([
+      { id: wrongType.id, reason: 'invalid-fields' },
+      { id: missing.id, reason: 'invalid-fields' },
+    ]);
     expect(plan.writes.size).toBe(0);
   });
 });

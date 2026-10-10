@@ -1,3 +1,4 @@
+import { PIX_MEDIA } from '../../native/__fixtures__/payloads';
 import { writeEntry, newEntryId, flushOutbox } from '../writeEntry';
 import { DirectRoutingUnresolved } from '../../domain/audience';
 import { Obscura } from '../../native/ObscuraModule';
@@ -107,6 +108,18 @@ describe('the effect ORDER', () => {
   });
 });
 
+describe('field validation', () => {
+  it('refuses data that does not match the schema, and writes nothing', async () => {
+    const convId = [SELF, BOB].sort().join('_');
+
+    await expect(writeEntry(args('directMessage', { conversationId: convId, content: 42 })))
+      .rejects.toThrow('invalid fields content');
+
+    expect(bridge.__sent).toEqual([]);
+    expect(bridge.__calls).not.toContain('entryPut');
+  });
+});
+
 describe('audience failures', () => {
   /**
    * **Nothing is stored and nothing is sent.** A local row the user can see but that reached nobody
@@ -141,7 +154,7 @@ describe('audience failures', () => {
    * viewed-receipt back with `{ ...story.data }`, so the peer-supplied id reaches here directly.
    */
   it('resolves pix by conversation, and drops a participant who is not a friend', async () => {
-    await writeEntry(args('pix', { conversationId: [SELF, STRANGER].sort().join('_') }));
+    await writeEntry(args('pix', { ...PIX_MEDIA, conversationId: [SELF, STRANGER].sort().join('_') }));
 
     // Stored — it is the user's own entry — but sent to nobody but their own devices.
     expect(await Obscura.entryAll('pix')).toHaveLength(1);
@@ -156,7 +169,7 @@ describe('audience failures', () => {
   it('refuses a conversation this user is not part of', async () => {
     const theirs = [BOB, '44444444-4444-4444-8444-444444444444'].sort().join('_');
 
-    await expect(writeEntry(args('pix', { conversationId: theirs })))
+    await expect(writeEntry(args('pix', { ...PIX_MEDIA, conversationId: theirs })))
       .rejects.toThrow(DirectRoutingUnresolved);
 
     expect(bridge.__sent).toEqual([]);
@@ -164,7 +177,7 @@ describe('audience failures', () => {
   });
 
   it('sends to a conversation participant who IS a friend', async () => {
-    await writeEntry(args('pix', { conversationId: [SELF, BOB].sort().join('_') }));
+    await writeEntry(args('pix', { ...PIX_MEDIA, conversationId: [SELF, BOB].sort().join('_') }));
 
     expect(bridge.__sent[0].recipientUserIds).toEqual([BOB]);
   });
@@ -190,7 +203,7 @@ describe('attribution', () => {
     const convId = [SELF, BOB].sort().join('_');
 
     await writeEntry(args('pix', {
-      conversationId: convId, _authorUserId: BOB, viewedAt: 123,
+      ...PIX_MEDIA, conversationId: convId, _authorUserId: BOB, viewedAt: 123,
     }, 'pix_from_bob'));
 
     expect(JSON.parse((await Obscura.entryAll('pix'))[0].data)._authorUserId).toBe(BOB);

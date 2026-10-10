@@ -1,3 +1,4 @@
+import { PIX_MEDIA } from '../../native/__fixtures__/payloads';
 import { drainInbox, drainInboxFully } from '../drainInbox';
 import { Obscura } from '../../native/ObscuraModule';
 import { getFakeBridge } from '../../native/__fixtures__/reactNativeMock';
@@ -53,7 +54,7 @@ describe('draining', () => {
   it('preserves the authenticated sender device as the stored tie-break', async () => {
     deliver({
       modelKey: 'pix', entryId: 'p_1', senderDeviceId: 'device_authenticated',
-      payload: JSON.stringify({ conversationId: CONV, viewedAt: 0 }),
+      payload: JSON.stringify({ ...PIX_MEDIA, conversationId: CONV, viewedAt: 0 }),
     });
 
     await drainInbox();
@@ -223,7 +224,7 @@ describe('merging against what is already stored', () => {
     await Obscura.entryPut('pix', 'p', JSON.stringify({ conversationId: CONV, v: 'newer' }), 9_000, 'device_a');
     deliver({
       modelKey: 'pix', entryId: 'p', sentAt: 1_000,
-      payload: JSON.stringify({ conversationId: CONV, v: 'older' }),
+      payload: JSON.stringify({ ...PIX_MEDIA, conversationId: CONV, v: 'older' }),
     });
 
     const result = await drainInbox();
@@ -255,7 +256,7 @@ describe('merging against what is already stored', () => {
   it('is idempotent across a re-drain of the same rows', async () => {
     const row = {
       modelKey: 'pix' as const, entryId: 'p', sentAt: 5_000,
-      payload: JSON.stringify({ conversationId: CONV, v: 'once' }),
+      payload: JSON.stringify({ ...PIX_MEDIA, conversationId: CONV, v: 'once' }),
     };
     deliver(row);
     await drainInbox();
@@ -281,7 +282,7 @@ describe('merging against what is already stored', () => {
     );
     deliver({
       modelKey: 'pix', entryId: 'p', sentAt: 9_000,
-      payload: JSON.stringify({ conversationId: CONV, viewedAt: 9_000, _authorUserId: PEER }),
+      payload: JSON.stringify({ ...PIX_MEDIA, conversationId: CONV, viewedAt: 9_000, _authorUserId: PEER }),
     });
 
     await drainInbox();
@@ -321,7 +322,7 @@ describe('draining fully', () => {
 
   it('reports every model it touched, once', async () => {
     deliver({ modelKey: 'directMessage', entryId: 'a' });
-    deliver({ modelKey: 'story', entryId: 'b', payload: '{}' });
+    deliver({ modelKey: 'story', entryId: 'b', payload: '{"content":"hi"}' });
     deliver({ modelKey: 'directMessage', entryId: 'c' });
 
     const result = await drainInboxFully(1);

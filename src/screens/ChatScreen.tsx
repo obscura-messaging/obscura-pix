@@ -6,16 +6,17 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Obscura, onObscuraEvent, type ModelEntry } from '../native/ObscuraModule';
+import { Obscura, onObscuraEvent } from '../native/ObscuraModule';
 import { conversationId } from '../domain/conversation';
 import { useSession, useModelEntries, saveEntry } from '../state/store';
-import { AUTHOR_USER_ID } from '../models/schema';
+import { AUTHOR_USER_ID, type ModelData } from '../models/schema';
 import { authorOf } from '../utils/identity';
 import { toast } from '../components/Toast';
 import { SendIcon } from '../components/icons';
 import type { RootStackScreenProps, RootStackParamList } from '../navigation/types';
 import { openPixViewer } from '../navigation/openPixViewer';
 import { s, colors } from '../styles';
+import type { Entry } from '../domain/merge';
 
 // ─── Typing Bubble ──────────────────────────────────────
 
@@ -51,7 +52,9 @@ function TypingBubble() {
 
 // ─── Timeline item types ────────────────────────────────
 
-type TimelineItem = ModelEntry & { _kind: 'message' | 'pix' };
+type TimelineItem =
+  | (Entry<ModelData<'directMessage'>> & { _kind: 'message' })
+  | (Entry<ModelData<'pix'>> & { _kind: 'pix' });
 
 // ─── Chat Screen ────────────────────────────────────────
 
@@ -80,7 +83,7 @@ export function ChatScreen({ route }: RootStackScreenProps<'Chat'>) {
     [allPix, convId],
   );
 
-  const onViewPix = (entry: ModelEntry) => openPixViewer(nav, friend, [entry]);
+  const onViewPix = (entry: Entry<ModelData<'pix'>>) => openPixViewer(nav, friend, [entry]);
 
   // Typing observer + bubble — separate from entry-cache subscriptions since
   // typing isn't backed by entries.
@@ -103,7 +106,7 @@ export function ChatScreen({ route }: RootStackScreenProps<'Chat'>) {
   const timeline: TimelineItem[] = useMemo(() => [
     ...messages.map(m => ({ ...m, _kind: 'message' as const })),
     ...pixEntries.map(p => ({ ...p, _kind: 'pix' as const })),
-  ].sort((a, b) => a.timestamp - b.timestamp), [messages, pixEntries]);
+  ].sort((a, b) => a.sentAt - b.sentAt), [messages, pixEntries]);
 
   const send = async () => {
     if (!text.trim()) return;

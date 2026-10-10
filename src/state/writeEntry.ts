@@ -1,7 +1,9 @@
 import { Obscura } from '../native/ObscuraModule';
 import { resolveAudience, type AudienceFriend } from '../domain/audience';
-import { obscuraSchema, audienceFor, AUTHOR_USER_ID } from '../models/schema';
+import { obscuraSchema, audienceFor, fieldsFor, AUTHOR_USER_ID } from '../models/schema';
+import { invalidFields } from '../domain/fields';
 import { withEntryLock } from './entryLock';
+import { readEntries } from './readEntries';
 import { logError } from '../utils/log';
 
 /**
@@ -81,8 +83,10 @@ export interface WriteEntryArgs {
 export async function writeEntry(args: WriteEntryArgs): Promise<string> {
   const { model, data, selfUserId, myDeviceId, friends } = args;
 
-  // Throws before anything is written. An unresolvable audience must not leave a local row behind.
+  // Both checks throw before anything is written.
   const recipients = resolveAudience(audienceFor(model), data, selfUserId, friends);
+  const invalid = invalidFields(fieldsFor(model), data);
+  if (invalid.length > 0) throw new Error(`${model}: invalid fields ${invalid.join(', ')}`);
 
   const id = args.id ?? newEntryId(model);
 
@@ -219,22 +223,16 @@ export async function flushOutbox(args: FlushOutboxArgs): Promise<number> {
   for (const model of Object.keys(obscuraSchema)) {
     let stored;
     try {
-      stored = await Obscura.entryAll(model);
+      stored = await readEntries(model);
     } catch (e) {
       logError('flushOutbox.read:' + model, e);
       continue;
     }
 
     for (const row of stored) {
-      let data: Record<string, unknown>;
-      try {
-        data = JSON.parse(row.data) as Record<string, unknown>;
-      } catch {
-        continue; // `loadEntries` already logs unreadable rows; do not log the same row twice.
-      }
       if (!isUndelivered(row.localMetadata)) continue;
 
-      const payload = { ...data };
+      const payload = { ...row.data };
       delete payload[AUTHOR_USER_ID];
       try {
         const recipients = resolveAudience(audienceFor(model), payload, selfUserId, friends);
