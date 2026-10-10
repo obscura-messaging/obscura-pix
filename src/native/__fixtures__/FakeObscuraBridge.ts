@@ -259,6 +259,7 @@ export class FakeObscuraBridge {
     this.storedEntries.clear();
     this.__sent.length = 0;
     this.__discarded.length = 0;
+    this.__purged.length = 0;
     this.friends = [];
     this.listeners.clear();
     this.debugLog.length = 0;
@@ -451,6 +452,15 @@ export class FakeObscuraBridge {
     this.record('downloadAttachment');
     this.checkFailure('downloadAttachment');
     return `/fake/cache/${id}`;
+  }
+
+  /** Attachment ids passed to `purgeAttachment`, in order. */
+  __purged: string[] = [];
+
+  async purgeAttachment(id: string): Promise<void> {
+    this.record('purgeAttachment');
+    this.checkFailure('purgeAttachment');
+    this.__purged.push(id);
   }
 
   async resizeImage(srcPath: string, maxDim: number, _quality: number): Promise<{ path: string; width: number; height: number }> {

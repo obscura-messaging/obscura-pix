@@ -7,7 +7,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Obscura, type Friend } from '../native/ObscuraModule';
 import { conversationId } from '../domain/conversation';
-import { useSession, useModelEntries, refreshFriendGraph } from '../state/store';
+import { useSession, useModelEntries, refreshFriendGraph, type ScreenEntry } from '../state/store';
 import { AUTHOR_USER_ID } from '../models/schema';
 import { authorOf } from '../utils/identity';
 import { StoriesRow } from './StoriesScreen';
@@ -18,14 +18,13 @@ import type { RootStackParamList } from '../navigation/types';
 import { openPixViewer } from '../navigation/openPixViewer';
 import { timeAgo } from '../utils/format';
 import { colors } from '../styles';
-import type { Entry } from '../domain/merge';
 
 type PixState = 'received_new' | 'received_viewed' | 'sent_pending' | 'sent_opened' | 'none';
 
 interface FriendActivity {
   friend: Friend;
-  lastMessage?: Entry;
-  unopenedPix: Entry[];
+  lastMessage?: ScreenEntry;
+  unopenedPix: ScreenEntry[];
   pixState: PixState;
   pixCount: number;
   latestTimestamp: number;
@@ -39,7 +38,7 @@ export function ChatListScreen() {
   const pixEntries = useModelEntries('pix');
   const [acceptingUserId, setAcceptingUserId] = useState<string | null>(null);
 
-  const onViewPix = (sender: Friend, entries: Entry[]) => openPixViewer(nav, sender, entries);
+  const onViewPix = (sender: Friend, entries: ScreenEntry[]) => openPixViewer(nav, sender, entries);
   const onAcceptFriend = useCallback(async (friend: Friend) => {
     if (acceptingUserId !== null) return;
     setAcceptingUserId(friend.userId);
@@ -65,17 +64,17 @@ export function ChatListScreen() {
   // prefix-sharing id would have satisfied.
   const activities: FriendActivity[] = useMemo(() => friends.map(f => {
     const convId = conversationId(myUserId, f.userId);
-    const isMine = (e: Entry) => authorOf(e.data, AUTHOR_USER_ID) === myUserId;
-    const inConversation = (e: Entry) => e.data.conversationId === convId;
+    const isMine = (e: ScreenEntry) => authorOf(e.data, AUTHOR_USER_ID) === myUserId;
+    const inConversation = (e: ScreenEntry) => e.data.conversationId === convId;
 
     const friendMessages = messages.filter(inConversation);
     const lastMessage = friendMessages.sort((a, b) => b.sentAt - a.sentAt)[0];
 
     const conversationPix = pixEntries.filter(inConversation);
-    const receivedNew = conversationPix.filter(p => !isMine(p) && !p.data.viewedAt);
-    const receivedViewed = conversationPix.filter(p => !isMine(p) && !!p.data.viewedAt);
-    const sentPending = conversationPix.filter(p => isMine(p) && !p.data.viewedAt);
-    const sentOpened = conversationPix.filter(p => isMine(p) && !!p.data.viewedAt);
+    const receivedNew = conversationPix.filter(p => !isMine(p) && !p.viewedAt);
+    const receivedViewed = conversationPix.filter(p => !isMine(p) && !!p.viewedAt);
+    const sentPending = conversationPix.filter(p => isMine(p) && !p.viewedAt);
+    const sentOpened = conversationPix.filter(p => isMine(p) && !!p.viewedAt);
 
     const allPix = [...receivedNew, ...receivedViewed, ...sentPending, ...sentOpened]
       .sort((a, b) => b.sentAt - a.sentAt);

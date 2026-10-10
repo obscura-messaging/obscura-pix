@@ -519,6 +519,17 @@ extension ObscuraBridge {
 
     private static let safeIdChars = CharacterSet(
         charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+    private static let attachmentExtensions = ["jpg", "mp4", "mov"]
+
+    private static func attachmentDir() -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("attachments")
+    }
+
+    /// Cache file stem for an attachment id. Ids come from the server, so never trust them as a path.
+    private static func attachmentStem(_ id: String) -> String {
+        String(String.UnicodeScalarView(id.unicodeScalars.map { safeIdChars.contains($0) ? $0 : "_" }))
+    }
 
     @objc(uploadAttachment:resolver:rejecter:)
     func uploadAttachment(_ filePath: String,
@@ -547,15 +558,11 @@ extension ObscuraBridge {
         Task {
             do {
                 let fm = FileManager.default
-                let dir = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-                    .appendingPathComponent("attachments")
+                let dir = ObscuraBridge.attachmentDir()
                 try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
 
-                // Sanitize the (server-generated) id to a safe filename — no traversal.
-                let safe = String(String.UnicodeScalarView(
-                    id.unicodeScalars.map { ObscuraBridge.safeIdChars.contains($0) ? $0 : "_" }))
-                // Cache hit for any known extension — return immediately.
-                for ext in ["jpg", "mp4", "mov"] {
+                let safe = ObscuraBridge.attachmentStem(id)
+                for ext in ObscuraBridge.attachmentExtensions {
                     let c = dir.appendingPathComponent("\(safe).\(ext)")
                     if fm.fileExists(atPath: c.path),
                        let attrs = try? fm.attributesOfItem(atPath: c.path),
@@ -592,6 +599,20 @@ extension ObscuraBridge {
                 rejectKit(reject, "DOWNLOAD_ERROR", error)
             }
         }
+    }
+
+    /// Delete this device's decrypted copy of an attachment. The server's ciphertext is untouched.
+    @objc(purgeAttachment:resolver:rejecter:)
+    func purgeAttachment(_ id: String,
+                         resolver resolve: @escaping RCTPromiseResolveBlock,
+                         rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let dir = ObscuraBridge.attachmentDir()
+        let stem = ObscuraBridge.attachmentStem(id)
+        for ext in ObscuraBridge.attachmentExtensions {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(stem).\(ext)"))
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(stem).\(ext).tmp"))
+        }
+        resolve(nil)
     }
 }
 

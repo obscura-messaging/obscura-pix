@@ -3,7 +3,7 @@ import type { MaterialTopTabScreenProps } from '@react-navigation/material-top-t
 import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
 import type { Friend } from '../native/ObscuraModule';
 import type { PhotoFile } from 'react-native-vision-camera';
-import type { Entry } from '../domain/merge';
+import type { ScreenEntry } from '../state/store';
 import type { ModelData } from '../models/schema';
 
 export type MainTabParamList = {
@@ -38,7 +38,7 @@ export type RootStackParamList = {
     groups: StoryGroup[];
     startIndex: number;
     /**
-     * Whether to fire `viewedAt` upserts as entries are shown. Used by the
+     * Whether to send seen receipts as entries are shown. Used by the
      * pix viewer; story groups don't need it.
      */
     markViewed?: boolean;
@@ -49,7 +49,7 @@ export type RootStackParamList = {
 };
 
 /** The story viewer shows stories and pix alike. */
-export type ViewerEntry = Entry<Partial<ModelData<'story'> & ModelData<'pix'>>>;
+export type ViewerEntry = ScreenEntry<Partial<ModelData<'story'> & ModelData<'pix'>>>;
 
 export interface StoryGroup {
   /** The transport-attributed author. The grouping key for username resolution. */

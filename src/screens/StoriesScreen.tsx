@@ -13,12 +13,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Obscura } from '../native/ObscuraModule';
 import { logError } from '../utils/log';
 import { timeAgo as fmtTimeAgo } from '../utils/format';
-import { useSession, useModelEntries, saveEntry } from '../state/store';
+import { useSession, useModelEntries, markSeen, type ScreenEntry } from '../state/store';
 import { AUTHOR_USER_ID } from '../models/schema';
 import { authorOf, displayNameFor } from '../utils/identity';
 import type { RootStackParamList, RootStackScreenProps, StoryGroup } from '../navigation/types';
 import { colors } from '../styles';
-import type { Entry } from '../domain/merge';
 
 const STORY_DURATION = 5000; // 5 seconds per story
 
@@ -56,27 +55,17 @@ export function StoryViewer({ route, navigation }: RootStackScreenProps<'StoryVi
   const group = groups[groupIdx];
   const story = group?.stories[storyIdx];
 
-  // Dedup `viewedAt` upserts so multiple exit paths don't double-fire for
-  // the same entry.
+  // One receipt per pix, however the viewer is left.
   const viewedIdsRef = useRef<Set<string>>(new Set());
 
-  // If `markViewed` was requested, fire a viewedAt upsert on the currently
-  // displayed pix. LWW merges so the sender gets the receipt. The
-  // `saveEntry` refreshes the model, which re-renders other screens reactively.
   const markCurrentViewed = useCallback(() => {
     if (!markViewed || !story) return;
     if (viewedIdsRef.current.has(story.id)) return;
     viewedIdsRef.current.add(story.id);
-    // The viewed-receipt: the RECIPIENT writes it, so this is the case where an equal-timestamp
-    // merge collision is real rather than theoretical (DOMAIN_CONTRACT). It goes back to the same
-    // conversation audience the pix came from, which is why `conversationId` must stay in the data.
-    saveEntry('pix', { ...story.data, viewedAt: Date.now() }, story.id)
-      .catch((e) => logError('viewonce.upsert:' + story.id, e));
+    markSeen('pix', story).catch((e) => logError('seen.pix:' + story.id, e));
   }, [markViewed, story]);
 
-  // Catch ALL exit paths uniformly (header back, hardware back, iOS
-  // swipe-back, close button). Without this, hardware/swipe back would skip
-  // the viewedAt receipt entirely.
+  // Every exit path (header back, hardware back, iOS swipe-back, close button) sends the receipt.
   useEffect(() => {
     const sub = navigation.addListener('beforeRemove', markCurrentViewed);
     return sub;
@@ -273,7 +262,7 @@ export function StoriesRow() {
   // the friend graph is dropped rather than shown as "unknown".
   const groups: StoryGroup[] = useMemo(() => {
     const identity = { myUserId, myUsername, friends };
-    const map = new Map<string, Entry[]>();
+    const map = new Map<string, ScreenEntry[]>();
     for (const s of stories) {
       const author = authorOf(s.data, AUTHOR_USER_ID);
       if (displayNameFor(author, identity) === null) continue;

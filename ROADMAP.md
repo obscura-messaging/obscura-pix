@@ -16,6 +16,8 @@ What's built, what's next.
 - [x] Debug log (in-app, Profile tab)
 - [x] **Camera + send photo** — vision-camera + photo preview + recipient picker
 - [x] **Ephemeral pix viewing** — view-once with display-duration timer + opened/delivered status
+- [x] **Disappearing messages** — messages and pix erase on every device 15 minutes after
+      the recipient sees them (30 days if never seen), driven by seen receipts
 - [x] **Android push notifications** — FCM silent wakes, generic local notifications, and a
       broad chat-list destination on tap
 - [x] **React Navigation** — native-stack + bottom tabs, real back stack
@@ -40,9 +42,7 @@ What's built, what's next.
 
 - [ ] Send photos in chat (inline, not just Pix)
 - [ ] Voice notes (record + send as encrypted attachment)
-- [ ] Message disappears after viewed or 24h
 - [ ] "Screenshotted" status in chat
-- [ ] Read receipts (ephemeral signal — same pattern as typing)
 
 ## Phase 4: Stories V2
 

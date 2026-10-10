@@ -37,6 +37,7 @@ interface NativeObscuraBridge {
   stopObservingTyping(conversationId: string): Promise<void>;
   uploadAttachment(filePath: string): Promise<AttachmentRef>;
   downloadAttachment(id: string, contentKey: string, nonce: string): Promise<string>;
+  purgeAttachment(id: string): Promise<void>;
   resizeImage(srcPath: string, maxDim: number, quality: number): Promise<ResizedImage>;
   writeTestImage(width: number, height: number): Promise<ResizedImage>;
   requestPushPermission(): Promise<boolean>;
@@ -232,6 +233,9 @@ export const Obscura = {
   // Repeated downloads of the same id short-circuit (cache hit).
   downloadAttachment: (id: string, contentKey: string, nonce: string): Promise<string> =>
     Bridge.downloadAttachment(id, contentKey, nonce),
+
+  /** Delete this device's decrypted copy of an attachment. */
+  purgeAttachment: (id: string): Promise<void> => Bridge.purgeAttachment(id),
 
   // Image processing — keeps bytes native.
   resizeImage: (srcPath: string, maxDim: number, quality: number): Promise<ResizedImage> =>

@@ -186,19 +186,12 @@ describe('audience failures', () => {
 });
 
 describe('attribution', () => {
-  /**
-   * The viewed-receipt: the RECIPIENT writes `viewedAt` onto a `pix` its SENDER created, re-sending
-   * `{ ...story.data }`. Stamping self there would relabel the sender's pix as one of mine, and
-   * `ChatScreen` would show "You sent a pix" for a pix I received.
-   */
-  it('keeps an existing author rather than claiming an entry it is only updating', async () => {
+  it('always records this user as the author, whatever the data claims', async () => {
     const convId = [SELF, BOB].sort().join('_');
 
-    await writeEntry(args('pix', {
-      ...PIX_MEDIA, conversationId: convId, _authorUserId: BOB, viewedAt: 123,
-    }, 'pix_from_bob'));
+    await writeEntry(args('pix', { ...PIX_MEDIA, conversationId: convId, _authorUserId: BOB }));
 
-    expect(JSON.parse((await Obscura.entryAll('pix'))[0].data)._authorUserId).toBe(BOB);
+    expect(JSON.parse((await Obscura.entryAll('pix'))[0].data)._authorUserId).toBe(SELF);
   });
 });
 

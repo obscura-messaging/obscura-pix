@@ -14,8 +14,10 @@ const CONV = [SELF, PEER].sort().join('_');
 const models = new Map<string, ModelRules>([
   ['directMessage', { merge: 'APPEND', fields: { content: 'string' }, conversationField: 'conversationId' }],
   ['story', { merge: 'APPEND', fields: {} }],
-  ['pix', { merge: 'REPLACE', fields: {}, conversationField: 'conversationId' }],
+  ['pix', { merge: 'APPEND', fields: {}, conversationField: 'conversationId' }],
   ['profile', { merge: 'REPLACE', fields: {}, ownerIdPrefix: 'profile_' }],
+  // A conversation-scoped REPLACE model, for the merge mechanics below.
+  ['note', { merge: 'REPLACE', fields: {}, conversationField: 'conversationId' }],
 ]);
 
 let nextId = 1;
@@ -86,26 +88,22 @@ describe('attribution — who an entry is from', () => {
     expect(plan.writes.get('story')?.[0].data._authorUserId).toBe(STRANGER);
   });
 
-  /**
-   * The viewed-receipt. A `pix` is created by the sender and UPDATED by the recipient, so a rule of
-   * "the author is whoever sent the last write" would relabel the sender's pix as the recipient's
-   * the moment they opened it — "Bob viewed your pix" becoming "Bob sent you a pix".
-   */
-  it('keeps the author this device already recorded when a second participant updates the entry', () => {
+  /** A pix is append-only: the other participant cannot change one this device already holds. */
+  it('ignores a second write to a stored entry by the other participant', () => {
     const mine: Entry = {
       id: 'p', sentAt: 1_000, authorDeviceId: 'device_mine',
-      data: { conversationId: CONV, _authorUserId: SELF },
+      data: { conversationId: CONV, caption: 'mine', _authorUserId: SELF },
     };
     const state = new Map([['pix', new Map([['p', mine]])]]);
-    const receipt = row({
+    const rewrite = row({
       modelKey: 'pix', entryId: 'p', sentAt: 9_000, senderUserId: PEER,
-      payload: JSON.stringify({ conversationId: CONV, viewedAt: 9_000, _authorUserId: PEER }),
+      payload: JSON.stringify({ conversationId: CONV, caption: 'rewritten' }),
     });
 
-    const plan = planDrain([receipt], models, state, SELF);
+    const plan = planDrain([rewrite], models, state, SELF);
 
-    expect(plan.writes.get('pix')?.[0].data._authorUserId).toBe(SELF);
-    expect(plan.writes.get('pix')?.[0].data.viewedAt).toBe(9_000);
+    expect(plan.consume).toEqual([rewrite.id]);
+    expect(plan.writes.get('pix') ?? []).toEqual([]);
   });
 });
 
@@ -296,20 +294,20 @@ describe('merging within a batch', () => {
    */
   it('resolves two rows for the same entry by the rule, not by arrival order', () => {
     const older = row({
-      modelKey: 'pix', entryId: 'p', sentAt: 1_000,
+      modelKey: 'note', entryId: 'p', sentAt: 1_000,
       payload: JSON.stringify({ v: 'old', conversationId: CONV }),
     });
     const newer = row({
-      modelKey: 'pix', entryId: 'p', sentAt: 9_000,
+      modelKey: 'note', entryId: 'p', sentAt: 9_000,
       payload: JSON.stringify({ v: 'new', conversationId: CONV }),
     });
 
     const forward = planDrain([older, newer], models, empty, SELF);
     const reverse = planDrain([newer, older], models, empty, SELF);
 
-    expect(forward.writes.get('pix')).toHaveLength(1);
-    expect(forward.writes.get('pix')?.[0].data.v).toBe('new');
-    expect(reverse.writes.get('pix')?.[0].data.v).toBe('new');
+    expect(forward.writes.get('note')).toHaveLength(1);
+    expect(forward.writes.get('note')?.[0].data.v).toBe('new');
+    expect(reverse.writes.get('note')?.[0].data.v).toBe('new');
   });
 
   /**
@@ -321,16 +319,16 @@ describe('merging within a batch', () => {
       id: 'p', sentAt: 9_000, authorDeviceId: 'device_x',
       data: { v: 'stored', conversationId: CONV },
     };
-    const state = new Map([['pix', new Map([['p', stored]])]]);
+    const state = new Map([['note', new Map([['p', stored]])]]);
     const loser = row({
-      modelKey: 'pix', entryId: 'p', sentAt: 1_000,
+      modelKey: 'note', entryId: 'p', sentAt: 1_000,
       payload: JSON.stringify({ v: 'older', conversationId: CONV }),
     });
 
     const plan = planDrain([loser], models, state, SELF);
 
     expect(plan.consume).toEqual([loser.id]);
-    expect(plan.writes.get('pix') ?? []).toEqual([]);
+    expect(plan.writes.get('note') ?? []).toEqual([]);
   });
 
   /** APPEND is first-write-wins, so a redelivered duplicate must not overwrite the original. */
@@ -358,37 +356,37 @@ describe('merging within a batch', () => {
   it('is idempotent — draining the same batch twice reaches the same state', () => {
     const rows = [
       row({
-        modelKey: 'pix', entryId: 'p', sentAt: 1_000,
+        modelKey: 'note', entryId: 'p', sentAt: 1_000,
         payload: JSON.stringify({ v: 'a', conversationId: CONV }),
       }),
       row({
-        modelKey: 'pix', entryId: 'p', sentAt: 9_000,
+        modelKey: 'note', entryId: 'p', sentAt: 9_000,
         payload: JSON.stringify({ v: 'b', conversationId: CONV }),
       }),
     ];
 
     const first = planDrain(rows, models, empty, SELF);
     const afterFirst = new Map([
-      ['pix', new Map((first.writes.get('pix') ?? []).map((e) => [e.id, e] as const))],
+      ['note', new Map((first.writes.get('note') ?? []).map((e) => [e.id, e] as const))],
     ]);
     const second = planDrain(rows, models, afterFirst, SELF);
 
-    expect(first.writes.get('pix')?.[0].data.v).toBe('b');
+    expect(first.writes.get('note')?.[0].data.v).toBe('b');
     // Second pass changes nothing — the winner already won.
-    expect(second.writes.get('pix') ?? []).toEqual([]);
+    expect(second.writes.get('note') ?? []).toEqual([]);
     expect(second.consume).toEqual(rows.map((r) => r.id));
   });
 
   it('queues one write per entry id, not one per row', () => {
     const rows = [1, 2, 3].map((v) => row({
-      modelKey: 'pix', entryId: 'p', sentAt: v * 1_000,
+      modelKey: 'note', entryId: 'p', sentAt: v * 1_000,
       payload: JSON.stringify({ v, conversationId: CONV }),
     }));
 
     const plan = planDrain(rows, models, empty, SELF);
 
-    expect(plan.writes.get('pix')).toHaveLength(1);
-    expect(plan.writes.get('pix')?.[0].data.v).toBe(3);
+    expect(plan.writes.get('note')).toHaveLength(1);
+    expect(plan.writes.get('note')?.[0].data.v).toBe(3);
     expect(plan.consume).toHaveLength(3);
   });
 });
@@ -415,5 +413,24 @@ describe('field validation', () => {
       { id: missing.id, reason: 'invalid-fields' },
     ]);
     expect(plan.writes.size).toBe(0);
+  });
+});
+
+describe('erased entries', () => {
+  it('consumes a write for an erased entry without storing it', () => {
+    const r = row({ modelKey: 'directMessage', entryId: 'dm_gone' });
+
+    const plan = planDrain([r], models, empty, SELF, new Set(['directMessage:dm_gone']));
+
+    expect(plan.consume).toEqual([r.id]);
+    expect(plan.writes.get('directMessage') ?? []).toEqual([]);
+  });
+
+  it('only skips the erased model, not the same id in another model', () => {
+    const r = row({ modelKey: 'pix', entryId: 'dm_gone' });
+
+    const plan = planDrain([r], models, empty, SELF, new Set(['directMessage:dm_gone']));
+
+    expect(plan.writes.get('pix')?.map((e) => e.id)).toEqual(['dm_gone']);
   });
 });

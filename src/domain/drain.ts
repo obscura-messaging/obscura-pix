@@ -17,6 +17,7 @@ import { parseConversationId } from './conversation';
 import { merge, type Entry, type MergeRule } from './merge';
 import { AUTHOR_USER_ID } from '../models/schema';
 import { invalidFields, type FieldType } from './fields';
+import { erasedKey } from './expiry';
 
 /** The kit's inbox row, narrowed to what the drain actually reads. */
 export interface DrainRow {
@@ -122,12 +123,16 @@ export interface DrainPlan {
  *
  * `selfUserId` is this device's authenticated user. It is required, not optional: the conversation
  * rule is meaningless without it, and defaulting it to `''` would silently authorize everything.
+ *
+ * `erased` holds `erasedKey(model, id)` for entries this device has erased (`domain/expiry.ts`). A
+ * later write for one is consumed without being stored, so a replay cannot bring it back.
  */
 export function planDrain(
   rows: readonly DrainRow[],
   knownModels: ReadonlyMap<string, ModelRules>,
   state: ReadonlyMap<string, ReadonlyMap<string, Entry>>,
   selfUserId: string,
+  erased: ReadonlySet<string> = new Set(),
 ): DrainPlan {
   const plan: DrainPlan = { writes: new Map(), consume: [], discard: [] };
   // Merge accumulates within the batch too: two rows touching one entry id must resolve against
@@ -186,29 +191,19 @@ export function planDrain(
       continue;
     }
 
+    if (erased.has(erasedKey(model, row.entryId))) {
+      plan.consume.push(row.id);
+      continue;
+    }
+
     const current = working.get(model) ?? new Map(state.get(model) ?? new Map());
 
-    // ATTRIBUTION. The authenticated sender becomes the author — except when this device already
-    // holds the entry, in which case the author it already recorded stands.
-    //
-    // The exception is what makes a REPLACE model with two legitimate writers work. A `pix` is
-    // created by Alice and updated by Bob (the viewed-receipt), so on Alice's device Bob's update
-    // must not flip the entry's author to Bob and turn "Bob viewed your pix" into "Bob sent you a
-    // pix". The author is fixed by whoever this device saw first and is never taken from the
-    // payload — a peer can put anything in `_authorUserId` and it is overwritten here every time.
-    //
-    // Known ordering wrinkle, and it is a mislabel rather than a leak: if Bob's receipt reaches
-    // Alice's *second* device before Alice's own create does, that device records Bob as the author.
-    // Both candidates are the conversation's two participants, which `authorize` has already pinned.
-    const prior = current.get(row.entryId)?.data[AUTHOR_USER_ID];
+    // The author is the authenticated sender, never a payload field.
     const entry: Entry = {
       id: row.entryId,
       sentAt: row.sentAt,
       authorDeviceId: row.senderDeviceId,
-      data: {
-        ...data,
-        [AUTHOR_USER_ID]: typeof prior === 'string' ? prior : row.senderUserId,
-      },
+      data: { ...data, [AUTHOR_USER_ID]: row.senderUserId },
     };
 
     const next = merge(rules.merge, current, [entry]);

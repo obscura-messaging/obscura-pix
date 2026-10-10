@@ -85,19 +85,8 @@ export async function writeEntry(args: WriteEntryArgs): Promise<string> {
 
   const id = args.id ?? newEntryId(model);
 
-  // ATTRIBUTION, the local half of `drain.ts`'s rule: this device authored the write, so this user
-  // is the author — unless the caller is updating an entry someone else created, in which case the
-  // author already recorded on it stands. That second case is the viewed-receipt: the RECIPIENT
-  // writes `viewedAt` onto a `pix` the sender created, and stamping self there would relabel the
-  // sender's pix as one of mine.
-  //
-  // A peer never gets to decide this. The field is local-only and omitted from the wire; on the
-  // receive side `drain.ts` reconstructs it from authenticated transport identity.
-  const priorAuthor = data[AUTHOR_USER_ID];
-  const stored: Record<string, unknown> = {
-    ...data,
-    [AUTHOR_USER_ID]: typeof priorAuthor === 'string' ? priorAuthor : selfUserId,
-  };
+  // `_authorUserId` is local-only: this device wrote it, so this user is the author.
+  const stored: Record<string, unknown> = { ...data, [AUTHOR_USER_ID]: selfUserId };
   const wireData = { ...stored };
   delete wireData[AUTHOR_USER_ID];
   const payload = JSON.stringify(wireData);

@@ -81,8 +81,6 @@ export const obscuraSchema = {
   },
   pix: {
     fields: {
-      // Canonical sorted "userIdA_userIdB" — targets both parties so the
-      // viewed-receipt (Bob → Alice) resolves in either direction.
       conversationId: 'string',
       _authorUserId: 'string',
       mediaRef: 'string',
@@ -95,11 +93,14 @@ export const obscuraSchema = {
       // the shape can evolve without a schema/contract change. See Caption.tsx.
       captionMeta: 'string?',
       displayDuration: 'number',
-      viewedAt: 'number?',
     },
-    merge: 'REPLACE',
-    // 1:1 — deliver to both conversation participants so the viewed-receipt
-    // (recipient → sender) resolves in either direction; never broadcast.
+    merge: 'APPEND',
+    audience: { kind: 'conversation', field: 'conversationId' },
+  },
+  seen: {
+    // A seen receipt for a `directMessage` or `pix` (`domain/seen.ts`). Its id names the entry.
+    fields: { conversationId: 'string', viewedAt: 'number', _authorUserId: 'string' },
+    merge: 'APPEND',
     audience: { kind: 'conversation', field: 'conversationId' },
   },
 } satisfies ModelSchema;

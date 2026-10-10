@@ -262,25 +262,29 @@ describe('merging against what is already stored', () => {
     expect(JSON.parse(stored[0].data).v).toBe('once');
   });
 
-  /**
-   * The viewed-receipt, end to end: the recipient's `viewedAt` update must not take the entry's
-   * authorship with it. Both kits stamp the authenticated sender on the row, so without the
-   * carry-over rule the pix would flip to "sent by them" the moment they opened it.
-   */
-  it('keeps the original author when the other participant sends a receipt', async () => {
+  /** Pix and messages are append-only, so the other participant cannot change what this side sent. */
+  it('ignores the other participant rewriting a pix or message', async () => {
     await Obscura.entryPut(
-      'pix', 'p', JSON.stringify({ conversationId: CONV, _authorUserId: SELF }), 1_000, 'device_mine',
+      'pix', 'p', JSON.stringify({ ...PIX_MEDIA, conversationId: CONV, caption: 'mine', _authorUserId: SELF }),
+      1_000, 'device_mine',
+    );
+    await Obscura.entryPut(
+      'directMessage', 'dm', JSON.stringify({ conversationId: CONV, content: 'what I said', _authorUserId: SELF }),
+      1_000, 'device_mine',
     );
     deliver({
       modelKey: 'pix', entryId: 'p', sentAt: 9_000,
-      payload: JSON.stringify({ ...PIX_MEDIA, conversationId: CONV, viewedAt: 9_000, _authorUserId: PEER }),
+      payload: JSON.stringify({ ...PIX_MEDIA, conversationId: CONV, caption: 'rewritten' }),
+    });
+    deliver({
+      modelKey: 'directMessage', entryId: 'dm', sentAt: 9_000,
+      payload: JSON.stringify({ conversationId: CONV, content: 'words put in my mouth' }),
     });
 
     await drainInbox();
 
-    const stored = JSON.parse((await Obscura.entryAll('pix'))[0].data);
-    expect(stored._authorUserId).toBe(SELF);
-    expect(stored.viewedAt).toBe(9_000);
+    expect(JSON.parse((await Obscura.entryAll('pix'))[0].data).caption).toBe('mine');
+    expect(JSON.parse((await Obscura.entryAll('directMessage'))[0].data).content).toBe('what I said');
   });
 });
 
