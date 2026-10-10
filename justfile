@@ -63,11 +63,22 @@ android-config:
 android-run: android-config ensure-node-modules
     ./scripts/run-with-android-env.sh npm run android
 
-# Assemble the Android release APK. Pass an architecture list and false to
-# skip R8 for a faster compile-only build:
+# Internal release assembler shared by compile-only and distribution builds.
+[private]
+android-assemble-release architectures minify distribution version_code version_name: android-config ensure-node-modules
+    architectures={{quote(architectures)}}; minify={{quote(minify)}}; distribution={{quote(distribution)}}; version_code={{quote(version_code)}}; version_name={{quote(version_name)}}; args=("-PenableProguardInReleaseBuilds=$minify"); [[ -z "$architectures" ]] || args+=("-PreactNativeArchitectures=$architectures"); if [[ "$distribution" == "true" ]]; then [[ "$version_code" =~ ^[1-9][0-9]*$ ]] || { echo "error: distribution version code must be a positive integer" >&2; exit 1; }; [[ -n "$version_name" ]] || { echo "error: distribution version name is required" >&2; exit 1; }; args+=("-PobscuraDistributionBuild=true" "-PobscuraVersionCode=$version_code" "-PobscuraVersionName=$version_name"); fi; ./scripts/run-with-android-env.sh ./android/gradlew -p android :app:assembleRelease --parallel "${args[@]}"
+
+# Assemble a compile-only Android release APK. Pass an architecture list and
+# false to skip R8 for a faster build:
 # just android-release arm64-v8a false
-android-release architectures="" minify="true": android-config ensure-node-modules
-    architectures={{quote(architectures)}}; minify={{quote(minify)}}; args=("-PenableProguardInReleaseBuilds=$minify"); [[ -z "$architectures" ]] || args+=("-PreactNativeArchitectures=$architectures"); ./scripts/run-with-android-env.sh ./android/gradlew -p android :app:assembleRelease --parallel "${args[@]}"
+android-release architectures="" minify="true":
+    just android-assemble-release {{quote(architectures)}} {{quote(minify)}} false '' ''
+
+# Assemble a signed, minified universal APK with real Firebase configuration.
+# Signing credentials are read from android/keystore.properties or the
+# ANDROID_RELEASE_* environment variables.
+android-distribution version_code version_name:
+    just android-assemble-release '' true true {{quote(version_code)}} {{quote(version_name)}}
 
 # Clean Android build outputs.
 android-clean: ensure-node-modules
@@ -80,8 +91,8 @@ push-sender-build:
 
 # Prepare all native iOS dependencies.
 [private]
-ios-prepare:
-    ./obscura-native/swift/scripts/bootstrap-libsignal.sh ios-sim
+ios-prepare libsignal_target="ios-sim": ensure-node-modules
+    ./obscura-native/swift/scripts/bootstrap-libsignal.sh {{quote(libsignal_target)}}
     ./obscura-native/swift/dev.sh prepare
     cd ios && pod install
 
@@ -89,3 +100,7 @@ ios-prepare:
 # compile-only build, for example: just ios-build arm64
 ios-build architecture="": ios-prepare
     architecture={{quote(architecture)}}; args=(COMPILER_INDEX_STORE_ENABLE=NO); [[ -z "$architecture" ]] || args+=(ARCHS="$architecture" ONLY_ACTIVE_ARCH=YES); GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all xcodebuild -workspace ios/Obscura.xcworkspace -scheme Obscura -destination 'generic/platform=iOS Simulator' -configuration Debug CODE_SIGNING_ALLOWED=NO "${args[@]}" build
+
+# Archive the production-bundle-ID device build for App Store Connect/TestFlight.
+ios-archive archive_path="ios/build/Obscura.xcarchive" build_number="" version="": (ios-prepare "ios-device")
+    build_number={{quote(build_number)}}; version={{quote(version)}}; args=(); [[ -z "$build_number" ]] || args+=(CURRENT_PROJECT_VERSION="$build_number"); [[ -z "$version" ]] || args+=(MARKETING_VERSION="$version"); GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all xcodebuild -workspace ios/Obscura.xcworkspace -scheme Obscura -configuration Release -destination 'generic/platform=iOS' -archivePath {{quote(archive_path)}} "${args[@]}" archive

@@ -44,6 +44,10 @@ yarn-error.log
 # Firebase — project-specific config, fetch from Firebase console per env
 android/app/google-services.json
 ios/**/GoogleService-Info.plist
+gha-creds-*.json
+*.p12
+*.mobileprovision
+AuthKey_*.p8
 
 # Temporary files created by Metro to check the health of the file watcher
 .metro-health-check*

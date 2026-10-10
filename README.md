@@ -1,8 +1,9 @@
 # Obscura
 
 End-to-end encrypted messaging built with React Native and ObscuraKit.
-Android is the current release target. The iOS app builds and supports
-foreground interoperability, but push and release signing are incomplete. See
+Android is the current release target. iOS has signed internal TestFlight
+builds and foreground interoperability, but push/background delivery is not
+implemented. See
 [`docs/IOS_PARITY.md`](docs/IOS_PARITY.md).
 
 ## Architecture
@@ -72,6 +73,14 @@ just check
 
 The Jest suite covers domain, native facade, and state behavior. It does not
 cover rendered UI or physical-device behavior.
+
+## Internal builds
+
+After `main` CI passes, an Obscura owner can run **Actions → Release / Internal**
+to send signed builds to Android and iOS testers. This does not publish to
+Google Play or the public App Store. See
+[Android distribution](docs/ANDROID_DISTRIBUTION.md) and
+[iOS distribution](docs/IOS_DISTRIBUTION.md) for signing and tester setup.
 
 ## Updating the native pin
 

@@ -28,6 +28,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
       in: window,
       launchOptions: launchOptions
     )
+    if let window { ScreenSecurity.protect(window) }
 
     return true
   }
