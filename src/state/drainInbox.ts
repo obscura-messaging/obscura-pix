@@ -1,5 +1,6 @@
 import { Obscura, type InboxRow } from '../native/ObscuraModule';
 import { planDrain, type DrainRow } from '../domain/drain';
+import { ERASED_MODEL } from '../domain/expiry';
 import type { Entry } from '../domain/merge';
 import { modelRules } from '../models/schema';
 import { withEntryLock } from './entryLock';
@@ -84,7 +85,8 @@ async function drainInboxUnlocked(limit: number): Promise<DrainResult> {
   );
   const state = await currentState(mentioned);
 
-  const plan = planDrain(rows.map(toDrainRow), rules, state, selfUserId);
+  const erased = new Set((await Obscura.entryAll(ERASED_MODEL)).map((e) => e.id));
+  const plan = planDrain(rows.map(toDrainRow), rules, state, selfUserId, erased);
 
   // 1. WRITE FIRST. A row is only safe to consume once its entry is durably stored.
   let written = 0;

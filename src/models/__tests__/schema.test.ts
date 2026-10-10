@@ -20,7 +20,7 @@ describe('what each model means', () => {
   it('matches the contract table', () => {
     const rules = modelRules();
 
-    expect([...rules.keys()].sort()).toEqual(['directMessage', 'pix', 'profile', 'story']);
+    expect([...rules.keys()].sort()).toEqual(['directMessage', 'pix', 'profile', 'seen', 'story']);
     expect(rules.get('directMessage')).toMatchObject({
       merge: 'APPEND', conversationField: 'conversationId', ownerIdPrefix: undefined,
     });
@@ -28,7 +28,10 @@ describe('what each model means', () => {
       merge: 'APPEND', conversationField: undefined, ownerIdPrefix: undefined,
     });
     expect(rules.get('pix')).toMatchObject({
-      merge: 'REPLACE', conversationField: 'conversationId', ownerIdPrefix: undefined,
+      merge: 'APPEND', conversationField: 'conversationId', ownerIdPrefix: undefined,
+    });
+    expect(rules.get('seen')).toMatchObject({
+      merge: 'APPEND', conversationField: 'conversationId', ownerIdPrefix: undefined,
     });
     expect(rules.get('profile')).toMatchObject({
       merge: 'REPLACE', conversationField: undefined, ownerIdPrefix: 'profile_',

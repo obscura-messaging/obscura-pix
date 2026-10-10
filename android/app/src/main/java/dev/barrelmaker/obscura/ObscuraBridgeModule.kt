@@ -491,16 +491,20 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
         }
     }
 
+    private fun attachmentDir() = java.io.File(reactApplicationContext.cacheDir, "attachments")
+
+    /** Cache file stem for an attachment id. Ids come from the server, so never trust them as a path. */
+    private fun attachmentStem(id: String) = id.replace(Regex("[^A-Za-z0-9_-]"), "_")
+
+    private val attachmentExtensions = listOf("jpg", "mp4", "mov")
+
     @ReactMethod
     fun downloadAttachment(id: String, contentKey: String, nonce: String, promise: Promise) {
         scope.launch {
             try {
-                val dir = java.io.File(reactApplicationContext.cacheDir, "attachments").apply { mkdirs() }
-                // Sanitize the id to a safe filename — attachment ids are server-generated
-                // (UUIDs in practice) but we don't want any path traversal surprises.
-                val safe = id.replace(Regex("[^A-Za-z0-9_-]"), "_")
-                // Cache hit for any known extension — return immediately.
-                for (ext in listOf("jpg", "mp4", "mov")) {
+                val dir = attachmentDir().apply { mkdirs() }
+                val safe = attachmentStem(id)
+                for (ext in attachmentExtensions) {
                     val c = java.io.File(dir, "$safe.$ext")
                     if (c.exists() && c.length() > 0L) { promise.resolve(c.absolutePath); return@launch }
                 }
@@ -536,6 +540,18 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
                 promise.rejectKit("DOWNLOAD_ERROR", t)
             }
         }
+    }
+
+    /** Delete this device's decrypted copy of an attachment. The server's ciphertext is untouched. */
+    @ReactMethod
+    fun purgeAttachment(id: String, promise: Promise) {
+        val dir = attachmentDir()
+        val stem = attachmentStem(id)
+        for (ext in attachmentExtensions) {
+            java.io.File(dir, "$stem.$ext").delete()
+            java.io.File(dir, "$stem.$ext.tmp").delete()
+        }
+        promise.resolve(null)
     }
 
     // ─── Image processing (native, path-in/path-out) ────────────────────────

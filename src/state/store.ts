@@ -11,7 +11,15 @@ import { requestStartupPermissions } from '../application/requestStartupPermissi
 import { logError } from '../utils/log';
 import type { Entry } from '../domain/merge';
 import type { ModelData, ModelName } from '../models/schema';
+import { EPHEMERAL_MODELS } from '../domain/expiry';
+import { SEEN_MODEL, indexReceipts, seenEntryId, viewedAtFor } from '../domain/seen';
 import { readEntries } from './readEntries';
+import { sweepExpired } from './expiry';
+
+/** An entry as screens see it: `data` as sent, plus when its recipient saw it (ephemeral models). */
+export type ScreenEntry<D = Record<string, unknown>> = Entry<D> & { viewedAt: number | null };
+
+const isEphemeral = (model: string) => (EPHEMERAL_MODELS as readonly string[]).includes(model);
 
 /**
  * Process-wide store for session state and application entry caches.
@@ -43,7 +51,7 @@ interface ObscuraStore {
   // Per-model entries cache. A `undefined` slot means "never loaded";
   // first useModelEntries(model) triggers the fetch + creates the slot,
   // after which bootstrap keeps it fresh on events.
-  entries: Record<string, Entry[] | undefined>;
+  entries: Record<string, ScreenEntry[] | undefined>;
 
   // Actions — public
   setAuthed: (v: boolean) => void;
@@ -58,7 +66,7 @@ interface ObscuraStore {
   _setDeviceId: (id: string) => void;
   _setFriendsAndPending: (friends: Friend[], pending: Friend[]) => void;
   _setConnState: (s: ConnectionState) => void;
-  _setEntries: (model: string, entries: Entry[]) => void;
+  _setEntries: (model: string, entries: ScreenEntry[]) => void;
 }
 
 export const useStore = create<ObscuraStore>((set) => ({
@@ -134,24 +142,38 @@ export function useSession() {
  * All entries for `model`, loading on first use; bootstrap keeps them fresh. Every write and every
  * received entry is validated against the schema, which is what makes the typed `data` sound.
  */
-export function useModelEntries<M extends ModelName>(model: M): Entry<ModelData<M>>[] {
+export function useModelEntries<M extends ModelName>(model: M): ScreenEntry<ModelData<M>>[] {
   const entries = useStore((s) => s.entries[model]);
   useEffect(() => {
     if (entries !== undefined) return;
     loadEntries(model);
   }, [model, entries]);
-  return (entries ?? []) as unknown as Entry<ModelData<M>>[];
+  return (entries ?? []) as unknown as ScreenEntry<ModelData<M>>[];
 }
 
 export async function loadEntries(model: string): Promise<void> {
   try {
     const rows = await readEntries(model);
-    useStore.getState()._setEntries(
-      model,
-      rows.map(({ id, sentAt, authorDeviceId, data }) => ({ id, sentAt, authorDeviceId, data })),
-    );
+    const receipts = indexReceipts(isEphemeral(model) ? await readEntries(SEEN_MODEL) : []);
+    useStore.getState()._setEntries(model, rows.map(({ id, sentAt, authorDeviceId, data }) => {
+      const entry = { id, sentAt, authorDeviceId, data };
+      return { ...entry, viewedAt: viewedAtFor(model, entry, receipts) };
+    }));
   } catch (e) {
     logError('entries.load:' + model, e);
+  }
+}
+
+/** Reload the given models a screen has loaded. A receipt change re-renders the entries it marks. */
+async function refreshLoaded(models: Iterable<string>): Promise<void> {
+  const changed = new Set(models);
+  if (changed.has(SEEN_MODEL)) EPHEMERAL_MODELS.forEach((m) => changed.add(m));
+  const loaded = useStore.getState().entries;
+  for (const model of changed) {
+    // A model nobody has opened does not need to be in memory.
+    if (loaded[model] !== undefined) {
+      await loadEntries(model).catch((e) => logError('entries.refresh:' + model, e));
+    }
   }
 }
 
@@ -164,15 +186,7 @@ export async function loadEntries(model: string): Promise<void> {
 export async function drainAndRefresh(alsoRefresh?: string): Promise<void> {
   try {
     const result = await drainInboxFully();
-    const loaded = useStore.getState().entries;
-    const models = new Set(alsoRefresh ? [...result.touched, alsoRefresh] : result.touched);
-    for (const model of models) {
-      // Only slices a screen has actually displayed — a model nobody has opened does not need to
-      // be in memory.
-      if (loaded[model] !== undefined) {
-        await loadEntries(model).catch((e) => logError('entries.refresh:' + model, e));
-      }
-    }
+    await refreshLoaded(alsoRefresh ? [...result.touched, alsoRefresh] : result.touched);
 
     // An inbox that is not empty after a full drain means the app has stopped keeping up; surface it
     // before the kit's persistence fails and the server queue fills.
@@ -262,6 +276,22 @@ export async function flushOutboxFromStore(): Promise<void> {
 function syncBothWays(label: string, alsoRefresh?: string): void {
   drainAndRefresh(alsoRefresh).catch((e) => logError('entries.drain:' + label, e));
   flushOutboxFromStore().catch((e) => logError('outbox.flush:' + label, e));
+  sweepAndRefresh().catch((e) => logError('expiry.sweep:' + label, e));
+}
+
+/** Ephemeral entries expire on a clock, so the sweep also runs on this interval while signed in. */
+const SWEEP_INTERVAL_MS = 30 * 1000;
+
+export async function sweepAndRefresh(): Promise<void> {
+  await refreshLoaded(await sweepExpired());
+}
+
+/** Send a seen receipt for an entry the user has just seen. The caller checks they are its recipient. */
+export async function markSeen(model: string, entry: Entry): Promise<void> {
+  const conversationId = entry.data.conversationId;
+  if (typeof conversationId !== 'string') return;
+  await saveEntry(SEEN_MODEL, { conversationId, viewedAt: Date.now() }, seenEntryId(model, entry.id));
+  await loadEntries(model);
 }
 
 /**
@@ -393,6 +423,14 @@ export function ObscuraBootstrap(): null {
   useEffect(() => {
     if (!authed) return;
     loadSession().catch((e) => logError('bootstrap.session', e));
+  }, [authed]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const timer = setInterval(() => {
+      sweepAndRefresh().catch((e) => logError('expiry.sweep:timer', e));
+    }, SWEEP_INTERVAL_MS);
+    return () => clearInterval(timer);
   }, [authed]);
 
   // Permission prompts must be serialized. Android drops concurrent requests, which previously

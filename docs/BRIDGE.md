@@ -106,6 +106,7 @@ bridge emits [`typingChanged`](#typingchanged).
 | ------------------------------------------- | ---------------- | --------------------------- | --------- |
 | `uploadAttachment(filePath)`                | string           | `{ id, contentKey, nonce }` | both      |
 | `downloadAttachment(id, contentKey, nonce)` | strings          | absolute file path          | both      |
+| `purgeAttachment(id)`                       | string           | `void`                      | both      |
 | `resizeImage(srcPath, maxDim, quality)`     | string, int, int | `{ path, width, height }`   | both      |
 | `writeTestImage(width, height)`             | ints             | `{ path, width, height }`   | both      |
 
@@ -115,7 +116,9 @@ payload. `uploadAttachment` leaves the source file alone.
 
 `downloadAttachment` decrypts to `<cacheDir>/attachments/<safeId>.<ext>`, with
 `ext` `jpg`, `mp4` or `mov` chosen from the content. This file cache is the
-only decrypted copy. Implementations MUST:
+only decrypted copy; `purgeAttachment` deletes it (all three extensions and
+their temp files), and the expiry sweep calls it before erasing a pix.
+Implementations MUST:
 
 - sanitize the id to a safe filename;
 - return an existing non-empty cached file without downloading;

@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, FlatList,
-  KeyboardAvoidingView, Platform, Animated, StyleSheet,
+  KeyboardAvoidingView, Platform, Animated, StyleSheet, type ViewToken,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Obscura, onObscuraEvent } from '../native/ObscuraModule';
 import { conversationId } from '../domain/conversation';
-import { useSession, useModelEntries, saveEntry } from '../state/store';
+import { useSession, useModelEntries, saveEntry, markSeen, type ScreenEntry } from '../state/store';
+import { useAppActive } from '../hooks/useAppActive';
+import { logError } from '../utils/log';
 import { AUTHOR_USER_ID, type ModelData } from '../models/schema';
 import { authorOf } from '../utils/identity';
 import { toast } from '../components/Toast';
@@ -16,7 +18,6 @@ import { SendIcon } from '../components/icons';
 import type { RootStackScreenProps, RootStackParamList } from '../navigation/types';
 import { openPixViewer } from '../navigation/openPixViewer';
 import { s, colors } from '../styles';
-import type { Entry } from '../domain/merge';
 
 // ─── Typing Bubble ──────────────────────────────────────
 
@@ -53,8 +54,10 @@ function TypingBubble() {
 // ─── Timeline item types ────────────────────────────────
 
 type TimelineItem =
-  | (Entry<ModelData<'directMessage'>> & { _kind: 'message' })
-  | (Entry<ModelData<'pix'>> & { _kind: 'pix' });
+  | (ScreenEntry<ModelData<'directMessage'>> & { _kind: 'message' })
+  | (ScreenEntry<ModelData<'pix'>> & { _kind: 'pix' });
+
+const VIEWABILITY = { itemVisiblePercentThreshold: 50 };
 
 // ─── Chat Screen ────────────────────────────────────────
 
@@ -83,7 +86,25 @@ export function ChatScreen({ route }: RootStackScreenProps<'Chat'>) {
     [allPix, convId],
   );
 
-  const onViewPix = (entry: Entry<ModelData<'pix'>>) => openPixViewer(nav, friend, [entry]);
+  const onViewPix = (entry: ScreenEntry<ModelData<'pix'>>) => openPixViewer(nav, friend, [entry]);
+
+  // A received message is seen once it is on screen in the focused chat with the app foregrounded.
+  const isFocused = useIsFocused();
+  const appActive = useAppActive();
+  const [visibleIds, setVisibleIds] = useState<ReadonlySet<string>>(new Set());
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    setVisibleIds(new Set(viewableItems.map((v) => (v.item as TimelineItem).id)));
+  }).current;
+  const markedRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!isFocused || !appActive) return;
+    for (const m of messages) {
+      if (!visibleIds.has(m.id) || m.viewedAt !== null || markedRef.current.has(m.id)) continue;
+      if (authorOf(m.data, AUTHOR_USER_ID) === myUserId) continue;
+      markedRef.current.add(m.id);
+      markSeen('directMessage', m).catch((e) => logError('seen.message:' + m.id, e));
+    }
+  }, [isFocused, appActive, visibleIds, messages, myUserId]);
 
   // Typing observer + bubble — separate from entry-cache subscriptions since
   // typing isn't backed by entries.
@@ -141,10 +162,8 @@ export function ChatScreen({ route }: RootStackScreenProps<'Chat'>) {
     }
 
     // ─── Pix entry
-    // The author survives the viewed-receipt: `drain.ts` keeps the author this device recorded when
-    // it first saw the entry, so the recipient writing `viewedAt` does not relabel the pix as theirs.
     const iSent = authorOf(item.data, AUTHOR_USER_ID) === myUserId;
-    const viewed = !!item.data.viewedAt;
+    const viewed = !!item.viewedAt;
 
     if (!iSent && !viewed) {
       // Received, unviewed — yellow "Tap to view" bar
@@ -199,6 +218,8 @@ export function ChatScreen({ route }: RootStackScreenProps<'Chat'>) {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           renderItem={renderItem}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={VIEWABILITY}
           ListFooterComponent={typers.length > 0 ? (
             <View style={[cs.msgRow, cs.msgRowLeft]}>
               <TypingBubble />

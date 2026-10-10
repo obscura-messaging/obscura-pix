@@ -10,7 +10,8 @@ in [`KIT_API.md`](https://github.com/obscura-messaging/obscura-native/blob/3a509
 | --------------- | ------- | -------------------- | ---------------------------------------- |
 | `directMessage` | APPEND  | conversation         | conversation names self and sender       |
 | `story`         | APPEND  | all accepted friends | none; the transport sender is the author |
-| `pix`           | REPLACE | conversation         | conversation names self and sender       |
+| `pix`           | APPEND  | conversation         | conversation names self and sender       |
+| `seen`          | APPEND  | conversation         | conversation names self and sender       |
 | `profile`       | REPLACE | all accepted friends | entry ID is `profile_<senderUserId>`     |
 
 `src/models/schema.ts` is the executable source: `audienceFor(model)` for
@@ -23,9 +24,7 @@ with `_` are local-only, never sent and not checked; undeclared fields are
 allowed. The screens' entry types are derived from the same declarations.
 
 `_authorUserId` is set by the app, never taken from a payload: on a local write
-it is this user, on receipt the transport sender. If the entry already exists
-locally, its recorded author is kept, so a `pix` viewed-receipt does not change
-the pix's author.
+it is this user, on receipt the transport sender.
 
 ## Audience
 
@@ -92,7 +91,22 @@ and remotely even when a peer's clock is ahead. If a send reaches nobody the
 entry is kept, marked undelivered in `localMetadata`, and retried on
 reconnect, foreground and cold start.
 
-## Expiry
+## Disappearing messages
 
-Nothing expires. Stories and entries remain until expiry is implemented and
-tested.
+`directMessage` and `pix` disappear (`src/domain/expiry.ts`, `src/domain/seen.ts`).
+
+- **Seen.** When the recipient sees an entry (a message on screen in the focused
+  chat with the app in the foreground, or a pix opened in the viewer) their
+  device writes a `seen` receipt with id `seen_<model>_<entryId>` and data
+  `{ conversationId, viewedAt }`, sent to both participants. A receipt counts
+  only if someone other than the entry's author wrote it in the entry's
+  conversation; `viewedAt` is capped at the receipt's `sentAt`.
+- **Expiry.** An entry expires 15 minutes after it was seen, and at most 30 days
+  after it was sent. Every device holding it, the sender's included, erases its
+  own copy with its receipt and decrypted media. Nothing is synced as a delete.
+- **No resurrection.** Before erasing, the device records the entry in the
+  local-only `_erased` model; the drain consumes later writes for it without
+  storing them. Markers, and receipts whose entry never arrived, are pruned
+  after 30 days.
+- The sweep (`src/state/expiry.ts`) runs on cold start, reconnect, foreground
+  and every 30 seconds while signed in. Stories and profiles do not expire.

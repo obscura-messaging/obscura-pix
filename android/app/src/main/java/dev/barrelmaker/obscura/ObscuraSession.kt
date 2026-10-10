@@ -328,8 +328,8 @@ object ObscuraSession {
         return when (modelName) {
             "pix" -> "New pix"
             "directMessage" -> "New message"
-            // Declared, and deliberately silent: neither is something the user needs woken for.
-            "story", "profile" -> null
+            // Declared, and deliberately silent.
+            "story", "profile", "seen" -> null
             else -> {
                 Log.w(TAG, "Notification: unrecognised model '$modelName' — is it renamed in schema.ts?")
                 "New message"
