@@ -1,47 +1,41 @@
 # iOS status
 
-The iOS app and Swift bridge build in CI and produce signed internal TestFlight
-builds. They use the same TypeScript app and the same [bridge contract](BRIDGE.md)
-as Android; this file tracks only iOS-specific status. iOS is not
-production-ready.
+iOS runs the same TypeScript app and [bridge contract](BRIDGE.md) as Android.
+It is not production-ready.
 
 ## Working
 
-- Every bridge method and event except the push and notification-tap paths
+- Every bridge method and event, except the push and notification-tap paths
   below. Sessions persist in the Keychain.
-- Physical Android↔iOS foreground interoperability: auth restore, friends,
-  entries, typing, attachments, Pix and view receipts, offline queues, cold
-  starts, and reconnects.
-- A TestFlight build smoke-tested for launch, login, and foreground messaging.
+- Foreground interoperability with Android on physical devices: auth restore,
+  friends, entries, typing, attachments, pix, offline queues,
+  cold starts and reconnects.
+- Internal TestFlight builds ([`IOS_DISTRIBUTION.md`](IOS_DISTRIBUTION.md)),
+  smoke-tested for launch, login and foreground messaging.
 
-## Gaps
+## Push delivery
 
-### Push delivery
+Push delivery is not wired. `requestPushPermission` registers for remote
+notifications, but nothing past that point exists. The remaining work:
 
-Not wired. iOS needs:
+1. Add the Firebase Messaging and Firebase Core dependencies.
+2. Add the APNs entitlement and provision a real device.
+3. Set up `FirebaseApp` and `MessagingDelegate`.
+4. Forward the APNs token to FCM, and the FCM token to JS as
+   `pushTokenReceived`.
+5. On a silent wake, restore the session and drain pending messages.
+6. Post generic local notifications, only while the app is backgrounded.
+7. Route notification taps through `getLaunchIntent` (by setting
+   `ObscuraBridge.pendingLaunchScreen`) and `launchedFrom` (by calling
+   `ObscuraBridge.deliverLaunchedFrom`).
 
-1. Firebase Messaging/Core dependencies.
-2. APNs entitlement and a provisioned real device.
-3. `FirebaseApp` and `MessagingDelegate` setup.
-4. APNs-token to FCM-token forwarding.
-5. `pushTokenReceived` delivery to the bridge.
-6. Silent-wake session restore and pending-message drain.
-7. Background-only generic local notifications.
-8. Notification tap routing (`getLaunchIntent` and `launchedFrom`).
+The rules are in [`PUSH_NOTIFICATIONS.md`](PUSH_NOTIFICATIONS.md). Push cannot
+be validated on the simulator.
 
-The privacy rules are in [`PUSH_NOTIFICATIONS.md`](PUSH_NOTIFICATIONS.md). Push
-cannot be validated on the simulator.
-
-### Other
+## Other gaps
 
 - The Swift kit cannot receive device-link approval, so a new iOS device cannot
-  be linked.
-- No background/foreground automation on device.
-
-## CI
-
-`.github/workflows/ios-ci.yml` builds the libsignal simulator FFI, prepares the
-Swift package, installs pods, and builds `Obscura.xcworkspace` for a generic
-simulator; its PR check is required. Internal releases build and upload a
-signed IPA to TestFlight ([`IOS_DISTRIBUTION.md`](IOS_DISTRIBUTION.md)). iOS
-does not block Android testing distribution.
+  be linked. See Known gaps in
+  [`KIT_API.md`](https://github.com/obscura-messaging/obscura-native/blob/7b72b52d033f098f5444d38bf8d4608120efa8c2/docs/KIT_API.md#known-gaps).
+- Background and foreground transitions are not tested automatically on a
+  device.

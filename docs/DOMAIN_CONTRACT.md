@@ -1,62 +1,58 @@
 # Application domain contract
 
-The app-owned semantics in `src/models/`, `src/domain/` and `src/state/`. The
-kit stores and sends opaque bytes; what the kit does and does not do is defined
-in [`KIT_API.md`](https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md).
+These are the semantics the app owns in `src/models/`, `src/domain/` and
+`src/state/`. The kit only stores and sends opaque bytes
+([`KIT_API.md`](https://github.com/obscura-messaging/obscura-native/blob/7b72b52d033f098f5444d38bf8d4608120efa8c2/docs/KIT_API.md)).
 
 ## Models
 
-| Model           | Merge   | Audience             | Inbound authorization                    |
-| --------------- | ------- | -------------------- | ---------------------------------------- |
-| `directMessage` | APPEND  | conversation         | conversation names self and sender       |
-| `story`         | APPEND  | all accepted friends | none; the transport sender is the author |
-| `pix`           | APPEND  | conversation         | conversation names self and sender       |
-| `seen`          | APPEND  | conversation         | conversation names self and sender       |
-| `profile`       | REPLACE | all accepted friends | entry ID is `profile_<senderUserId>`     |
+| Model           | Merge   | Audience             | Inbound authorization                    | Expires        |
+| --------------- | ------- | -------------------- | ---------------------------------------- | -------------- |
+| `directMessage` | APPEND  | conversation         | conversation names self and sender       | yes            |
+| `pix`           | APPEND  | conversation         | conversation names self and sender       | yes            |
+| `seen`          | APPEND  | conversation         | conversation names self and sender       | with its entry |
+| `story`         | APPEND  | all accepted friends | none; the transport sender is the author | no             |
+| `profile`       | REPLACE | all accepted friends | entry ID is `profile_<senderUserId>`     | no             |
 
-`src/models/schema.ts` is the executable source: `audienceFor(model)` for
-sending, `fieldsFor(model)` for local writes, and `modelRules()` for the drain.
-
-Each model declares field types (`string`, `string?`, `number`, `number?`;
-`?` means optional). They are enforced on local writes, which throw, and on
-received entries, which are discarded with `invalid-fields`. Fields starting
-with `_` are local-only, never sent and not checked; undeclared fields are
-allowed. The screens' entry types are derived from the same declarations.
-
-`_authorUserId` is set by the app, never taken from a payload: on a local write
-it is this user, on receipt the transport sender.
+`src/models/schema.ts` is the executable source: `audienceFor` for sends,
+`fieldsFor` for local writes, `modelRules` for the drain. Screen entry types
+derive from it. Field types are `string`, `string?`, `number` and `number?`
+(`?` means optional). A local write with a bad field throws, and a received
+entry with one is discarded as `invalid-fields`. Fields prefixed `_` are not
+checked, and undeclared fields are allowed. `_authorUserId` is local-only. It is
+stripped before sending, and it is never read from a payload. A local write sets
+it to this user, and the drain sets it to the transport sender.
 
 ## Audience
 
-The app passes explicit recipient user IDs to `sendEntry`. Resolution
-(`src/domain/audience.ts`) throws `DIRECT_ROUTING_UNRESOLVED`, sending nothing,
-when a required value is missing or malformed. It never widens to a broadcast.
+`src/domain/audience.ts` turns a declaration into the recipient user IDs for
+`sendEntry`. When a required value is missing or malformed, it throws
+`DIRECT_ROUTING_UNRESOLVED` and sends nothing. It never widens to a broadcast.
 
-- No declared audience: every accepted friend.
-- `self`: own other devices only; the recipient list is empty.
-- `recipient`: a username resolved through accepted friends; an unknown name
-  resolves to no external recipient.
-- `conversation`: a canonical conversation ID that names the local user,
-  intersected with accepted friends.
+- **None declared:** every accepted friend.
+- **`self`:** an empty list, which reaches only the author's other devices.
+- **`recipient`:** a username looked up among accepted friends. An unknown name
+  reaches nobody else.
+- **`conversation`:** a canonical conversation ID that must name the local
+  user, intersected with accepted friends.
 
 ### Canonical conversation ID
 
-The two participant user IDs, sorted and joined with `_`: `"userIdA_userIdB"`.
-User IDs are UUIDs and contain no `_`. `src/domain/conversation.ts` has the one
-constructor and one parser. The parser rejects anything noncanonical, including
-a reversed pair, rather than guessing an audience.
+The two participant user IDs, sorted and joined with `_`. User IDs are UUIDs,
+so they never contain `_`. `src/domain/conversation.ts` has the only
+constructor and parser. The parser rejects any noncanonical ID, including a
+reversed pair.
 
 ## Inbound authorization
 
-Any authenticated account can deliver to any device, so the drain authorizes
-each entry against the inbox row's `senderUserId`, never a payload field.
-Friendship is not required; names are resolved from the friend graph at render
-time.
+Any authenticated account can deliver to any device. The drain therefore
+authorizes against the inbox row's `senderUserId`, never a payload field.
+Friendship is not required; names come from the friend graph at render time.
 
-- A conversation entry must name the local user and the sender. For a self-sync
-  (sender is the local user) the other participant is the peer.
+- A conversation entry must name both the local user and the sender. In a
+  self-sync, the sender is the local user.
 - A profile entry ID must equal `profile_<senderUserId>`.
-- A story has no binding field; the sender is its author.
+- A story has no binding field. Its sender is its author.
 
 ## Drain
 
@@ -64,49 +60,52 @@ time.
 peek -> classify -> parse -> validate fields -> authorize -> merge -> entryPut -> consume
 ```
 
-A row that can never be processed is discarded with one of these reasons:
-`unknown-kind`, `unknown-model`, `missing-fields`, `unparsable-payload`,
-`invalid-fields`, `unauthorized-sender`. Transient failures leave rows pending.
-A merge loser is consumed without a write. Entry writes and `consume` share no
-transaction, so merge must be idempotent.
+A row that can never be processed is discarded with a reason: `unknown-kind`,
+`unknown-model`, `missing-fields`, `unparsable-payload`, `invalid-fields` or
+`unauthorized-sender`. A transient failure leaves the row pending, and a merge
+loser is consumed without a write. Nothing is drained until `getUserId` returns
+a value. The drain runs on cold start, reconnect, foreground and
+`messageReceived`.
 
 ## Merge
 
-Keyed by entry ID (`src/domain/merge.ts`).
+`src/domain/merge.ts` merges by entry ID. Entry writes and `consume` share no
+transaction, so merge must be idempotent.
 
-- **APPEND:** the first write for an ID wins; repeats are ignored.
-- **REPLACE:** the greater `(sentAt, authorDeviceId)` wins, comparing `sentAt`
-  first and then `authorDeviceId` lexicographically. Equal on both is the same
-  write.
+- **APPEND:** the first write wins.
+- **REPLACE:** the greater `sentAt` wins. On a tie, the lexicographically
+  greater `authorDeviceId` wins. Equal on both is the same write.
 
 `authorDeviceId` is the device whose session decrypted the entry, or this
 device for a local write.
 
 ## Local writes
 
-`src/state/writeEntry.ts`: resolve the audience and validate fields (either may
-throw, before anything is stored), write locally, then send. A local write's
-`sentAt` is at least one millisecond past the stored copy's, so it wins locally
-and remotely even when a peer's clock is ahead. If a send reaches nobody the
-entry is kept, marked undelivered in `localMetadata`, and retried on
-reconnect, foreground and cold start.
+`src/state/writeEntry.ts` resolves the audience and validates fields first;
+either may throw before anything is stored. It then writes locally, then sends.
+A local write's `sentAt` is at least 1 ms after the stored copy's, so it wins
+even when a peer's clock is ahead. When a send reaches nobody, the error is
+rethrown. The entry is kept and marked undelivered in `localMetadata`, then
+retried on cold start, reconnect and foreground.
 
 ## Disappearing messages
 
-`directMessage` and `pix` disappear (`src/domain/expiry.ts`, `src/domain/seen.ts`).
+The rules for `directMessage` and `pix` are in `src/domain/seen.ts` and
+`src/domain/expiry.ts`.
 
-- **Seen.** When the recipient sees an entry (a message on screen in the focused
-  chat with the app in the foreground, or a pix opened in the viewer) their
-  device writes a `seen` receipt with id `seen_<model>_<entryId>` and data
-  `{ conversationId, viewedAt }`, sent to both participants. A receipt counts
-  only if someone other than the entry's author wrote it in the entry's
-  conversation; `viewedAt` is capped at the receipt's `sentAt`.
-- **Expiry.** An entry expires 15 minutes after it was seen, and at most 30 days
-  after it was sent. Every device holding it, the sender's included, erases its
-  own copy with its receipt and decrypted media. Nothing is synced as a delete.
-- **No resurrection.** Before erasing, the device records the entry in the
-  local-only `_erased` model; the drain consumes later writes for it without
-  storing them. Markers, and receipts whose entry never arrived, are pruned
-  after 30 days.
-- The sweep (`src/state/expiry.ts`) runs on cold start, reconnect, foreground
-  and every 30 seconds while signed in. Stories and profiles do not expire.
+- **Seen.** The recipient writes a `seen` entry with ID
+  `seen_<model>_<entryId>` and data `{ conversationId, viewedAt }`. A message
+  counts as seen when it is on screen in the focused chat with the app in the
+  foreground. A pix counts as seen when the viewer moves past it or closes. A
+  receipt counts only if someone other than the entry's author wrote it, in the
+  entry's conversation. `viewedAt` is capped at the receipt's `sentAt`. Screens
+  read the result as `entry.viewedAt`.
+- **Expiry.** An entry expires 15 minutes after it is seen, and no later than 30
+  days after it is sent. Every device that holds it erases its own copy,
+  receipt and decrypted media, including the sender's. No delete is synced.
+- **No resurrection.** Before erasing, a device records the entry in the
+  local-only `_erased` model, and the drain consumes later writes for it
+  without storing them. Markers are pruned after 30 days, as are receipts whose
+  entry never arrived.
+- **Sweep.** `src/state/expiry.ts` runs on cold start, reconnect, foreground and
+  every 30 s while signed in.

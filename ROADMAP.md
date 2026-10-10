@@ -1,70 +1,40 @@
 # Roadmap
 
-What's built, what's next.
-
 ## Done
 
-- [x] Auth (register, login, session restore)
-- [x] Friends (codes, add, accept, pending/accepted states)
-- [x] Chat (encrypted messages, conversation-scoped)
-- [x] Typing indicators (animated dots, cross-platform)
-- [x] Stories (post, feed) — **but they do not expire**, see below
-- [x] Profiles (display name, bio, synced to friends)
-- [x] Encrypted attachments (upload, download, AES-GCM)
-- [x] Auto-reconnect (ping keepalive, exponential backoff)
-- [x] Session persistence (survives app restart)
-- [x] Debug log (in-app, Profile tab)
-- [x] **Camera + send photo** — vision-camera + photo preview + recipient picker
-- [x] **Ephemeral pix viewing** — view-once with display-duration timer + opened/delivered status
-- [x] **Disappearing messages** — messages and pix erase on every device 15 minutes after
-      the recipient sees them (30 days if never seen), driven by seen receipts
-- [x] **Android push notifications** — FCM silent wakes, generic local notifications, and a
-      broad chat-list destination on tap
-- [x] **React Navigation** — native-stack + bottom tabs, real back stack
-- [x] **Zustand state** — single store + useModelEntries hook, no prop-drilling
-- [x] **App-owned domain** — merge, audience resolution and the inbox drain in TypeScript
-      (`src/domain/`)
+- Auth: register, login and session restore. A `deviceMismatch` login wipes
+  the device and re-provisions it.
+- Friends: codes, QR scan, requests and acceptance.
+- Encrypted 1:1 chat with typing indicators.
+- Stories (post and feed). They do not expire yet.
+- Profiles: display name and bio, synced to friends.
+- Encrypted photo and video attachments.
+- Camera capture, preview, captions and a recipient picker for pix.
+- View-once pix with a display timer and opened status.
+- Disappearing messages and pix. They are erased on every device 15 minutes
+  after the recipient sees them, or 30 days after sending if never seen.
+- Screen capture blocked on Android and iOS.
+- Android push: silent FCM wakes, generic local notifications, and a chat-list
+  destination on tap.
+- In-app debug log on the Profile tab.
 
-## Current gaps
+## Gaps
 
-- [ ] **24-hour story expiry.** Nothing expires on either platform.
-- [ ] **Device linking UI.** The kits and both bridges support linking
-      (`generateLinkCode`, `validateAndApproveLink`), but the app has no screen
-      for it. A new iOS device cannot receive link approval.
-- [ ] **iOS push and release gate.** See [`docs/IOS_PARITY.md`](docs/IOS_PARITY.md).
+- 24-hour story expiry.
+- Device-linking UI. Both bridges expose `generateLinkCode` and
+  `validateAndApproveLink`, but no screen uses them.
+- iOS push and production readiness ([`IOS_PARITY.md`](docs/IOS_PARITY.md)).
 
-## Phase 2: Ephemeral viewing polish
+## Next
 
-- [ ] 1x or 2x view option (sender chooses)
-- [ ] Screenshot detection + notification to sender
+- **Pix:** a sender-chosen 1x or 2x view.
+- **Chat:** inline photos and voice notes.
+- **Stories:** several snaps per story, view counts and viewers, replies that
+  open a chat, and close-friends audiences.
+- **Streaks:** a daily exchange counter per friend, a fire-and-count display, an
+  expiry warning, and push reminders.
 
-## Phase 3: Rich Chat
+## Not planned
 
-- [ ] Send photos in chat (inline, not just Pix)
-- [ ] Voice notes (record + send as encrypted attachment)
-- [ ] "Screenshotted" status in chat
-
-## Phase 4: Stories V2
-
-- [ ] Multiple snaps per story (swipeable)
-- [ ] View count + who viewed
-- [ ] Reply to story (opens chat with that friend)
-- [ ] Close friends / custom audience for stories
-
-## Phase 5: Streaks
-
-- [ ] Daily snap exchange counter per friend
-- [ ] Fire emoji + streak count display
-- [ ] Streak expiry warning (approaching 24h without exchange)
-- [ ] Streak reminders via push notification
-
-## Not Planned
-
-- AR filters / lenses
-- Drawing on photos
-- Video calls
-- Snap Map / location
-- Memories / saved snaps
-- Bitmoji
-- Snap score
-- Chat wallpapers
+AR lenses, drawing on photos, video calls, maps or location, saved memories,
+Bitmoji, snap score, chat wallpapers.

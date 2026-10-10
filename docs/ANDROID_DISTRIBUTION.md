@@ -1,30 +1,31 @@
-# Android testing distribution
+# Android internal distribution
 
-PR and `main` CI do not distribute builds. When an internal build is wanted,
-an Obscura owner selects **Actions → Release / Internal → Run workflow**
-on `main`. This single workflow checks that the selected commit is the current
-`main` tip with successful `main` CI, then starts Android and iOS independently.
-Its Android job builds the selected commit once as a signed, minified universal
-APK, retains the APK and release notes as a GitHub artifact for 30 days, and
-passes that same verified APK to a separate job for Firebase App Distribution.
-iOS distribution does not gate Android testing delivery. The internal build
-does not create a tag or publish to an app store.
+PR and `main` CI never distribute, and PRs never see distribution credentials
+(they use the Firebase stub and debug signing). To ship, an owner
+(`barrelmaker97` or `rhelsing`) runs **Actions → Release / Internal → Run
+workflow** on `main`. `scripts/verify-internal-build.sh` checks the starting
+and rerunning actor. It also requires the commit to be the current `main` tip
+with a successful `main` CI run. Android and iOS then run independently.
 
-Pull requests never receive distribution credentials. Their Android CI build
-uses the checked-in Firebase stub and debug signing as a compile gate.
+`.github/workflows/internal-android.yml` builds that commit once as a signed,
+minified universal APK. It keeps the APK and release notes as a GitHub artifact
+for 30 days. A second job verifies the APK's checksum and commit, then sends it
+to Firebase App Distribution. There is no tag and no Google Play upload.
+The version code is 1000 plus the release run number. Never rerun a release
+that has already uploaded; retry the failed jobs or start a new run.
 
 ## Firebase
 
 The Firebase Android app must use package `dev.barrelmaker.obscura`. Enable App
-Distribution, create a tester group, and add each tester's Google account.
-
-Download the real `google-services.json` for local push testing. Keep it at
-`android/app/google-services.json`; the file is gitignored.
+Distribution, create a tester group, and add each tester's Google account. For
+local push testing, use the real config
+([CONTRIBUTING](../CONTRIBUTING.md#setup-and-builds)).
 
 ## Signing key
 
-Create one long-lived release key and keep an encrypted backup outside the
-repository:
+Create one long-lived key. Keep an encrypted backup outside the repository.
+Every distributed APK must use this key, or it cannot update an existing
+install. PKCS12 uses the same password for the store and the key.
 
 ```bash
 mkdir -p ~/.config/obscura
@@ -35,10 +36,12 @@ keytool -genkeypair -v \
   -keyalg RSA -keysize 4096 -validity 10000
 ```
 
-Use the same store and key password for PKCS12. Every distributed APK must use
-this identity so it can update an existing installation.
-
-For a local signed build, create ignored `android/keystore.properties`:
+For a local signed build, create the gitignored `android/keystore.properties`.
+The matching `ANDROID_RELEASE_STORE_FILE`, `ANDROID_RELEASE_STORE_PASSWORD`,
+`ANDROID_RELEASE_KEY_ALIAS` and `ANDROID_RELEASE_KEY_PASSWORD` environment
+variables override it. Then run `just android-distribution 1 1.0.0-test.1`.
+Unlike `just android-release`, it fails if signing, version metadata or the
+real Firebase config is missing.
 
 ```properties
 storeFile=/absolute/path/to/android-release.p12
@@ -47,76 +50,55 @@ keyAlias=obscura-release
 keyPassword=...
 ```
 
-Then run:
-
-```bash
-just android-distribution 1 1.0.0-test.1
-```
-
-Unlike `just android-release`, this command fails if signing, version metadata,
-or the real Firebase configuration is missing.
-
 ## GitHub `android-internal` environment
 
-The `android-internal` environment allows only `main`. The manually dispatched
-workflow verifies the initiating and rerunning actor, current `main` commit,
-and successful CI before either build or delivery can access signing secrets.
-Android version codes start at 1001 (1000 plus the release workflow run number)
-to avoid collisions with earlier builds. Do not rerun an already-uploaded full
-release; retry failed jobs or start a new release run instead.
+Deployments are allowed only from `main`.
 
-Configure these `android-internal` environment variables:
+| Variable | Value |
+| --- | --- |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Full workload identity provider resource name |
+| `GCP_SERVICE_ACCOUNT` | Distribution service-account email |
+| `FIREBASE_ANDROID_APP_ID` | Firebase Android App ID |
+| `FIREBASE_TESTER_GROUP` | App Distribution group alias |
 
-| Variable | Purpose |
-|---|---|
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Full Google workload identity provider resource name. |
-| `GCP_SERVICE_ACCOUNT` | Dedicated distribution service-account email. |
-| `FIREBASE_ANDROID_APP_ID` | Firebase Android App ID. |
-| `FIREBASE_TESTER_GROUP` | Firebase App Distribution group alias. |
+| Secret | Value |
+| --- | --- |
+| `GOOGLE_SERVICES_JSON_BASE64` | Base64 of the real `google-services.json` |
+| `ANDROID_RELEASE_KEYSTORE_BASE64` | Base64 of the PKCS12 key |
+| `ANDROID_RELEASE_STORE_PASSWORD` | PKCS12 password |
+| `ANDROID_RELEASE_KEY_ALIAS` | Normally `obscura-release` |
+| `ANDROID_RELEASE_KEY_PASSWORD` | PKCS12 password |
 
-Configure these `android-internal` environment secrets:
-
-| Secret | Purpose |
-|---|---|
-| `GOOGLE_SERVICES_JSON_BASE64` | Base64-encoded real Firebase Android configuration. |
-| `ANDROID_RELEASE_KEYSTORE_BASE64` | Base64-encoded PKCS12 signing key. |
-| `ANDROID_RELEASE_STORE_PASSWORD` | PKCS12 password. |
-| `ANDROID_RELEASE_KEY_ALIAS` | Signing alias, normally `obscura-release`. |
-| `ANDROID_RELEASE_KEY_PASSWORD` | PKCS12 password. |
-
-The build job validates the Firebase package and App ID before building and
-never writes signing credentials outside runner-temporary or ignored paths.
-The delivery job receives only the retained APK and release notes, verifies
-the APK checksum and tested commit, then authenticates to Google Cloud.
+Before building, the build job checks the config's package and App ID. It
+writes credentials only to runner-temporary or gitignored paths. The delivery
+job receives only the APK and the release notes, and it authenticates to Google
+Cloud only after verifying them.
 
 ## Google authentication
 
-Use GitHub's OpenID Connect token with Google Workload Identity Federation.
-Restrict the provider to `obscura-messaging/obscura-pix`, grant the repository principal
-`roles/iam.workloadIdentityUser` on a dedicated service account, and grant that
-service account `roles/firebaseappdistro.admin` in the Firebase project.
+Use GitHub OIDC with Google Workload Identity Federation. Never create a
+service-account JSON key.
 
-The provider's attribute condition must require the following claims:
+1. Restrict the provider to `obscura-messaging/obscura-pix`. Its attribute
+   condition must also pin the calling and reusable workflows; a
+   repository-only condition is too broad:
 
-```text
-assertion.repository == 'obscura-messaging/obscura-pix' &&
-assertion.ref == 'refs/heads/main' &&
-assertion.event_name == 'workflow_dispatch' &&
-assertion.workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/release-internal.yml@refs/heads/main' &&
-assertion.job_workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/internal-android.yml@refs/heads/main'
-```
+   ```text
+   assertion.repository == 'obscura-messaging/obscura-pix' &&
+   assertion.ref == 'refs/heads/main' &&
+   assertion.event_name == 'workflow_dispatch' &&
+   assertion.workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/release-internal.yml@refs/heads/main' &&
+   assertion.job_workflow_ref == 'obscura-messaging/obscura-pix/.github/workflows/internal-android.yml@refs/heads/main'
+   ```
 
-The condition must match both the manually dispatched calling workflow and
-the reusable Android workflow; repository-only conditions are too broad.
+2. Grant the repository principal `roles/iam.workloadIdentityUser` on a
+   dedicated service account.
+3. Grant that service account `roles/firebaseappdistro.admin` in the Firebase
+   project.
 
-Do not create a long-lived service-account JSON key for GitHub Actions.
+## Installing
 
-## Installing a build
-
-Firebase emails newly added testers an invitation. After accepting it, a tester
-can install the latest build from the Firebase App Tester page. Later builds
-signed with the same key update the existing app.
-
-The workflow summary links to the retained GitHub artifact as a fallback.
-Use a separate versioned release-candidate process when preparing a future
-Google Play build; the internal Firebase APK is not a Play-ready AAB.
+Firebase emails each new tester an invitation. Once they accept it, they can
+install from the Firebase App Tester page. Later builds signed with the same
+key update in place. The run's GitHub artifact is a fallback. These APKs are
+not Play-ready AABs; Google Play needs its own versioned release process.

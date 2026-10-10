@@ -1,54 +1,42 @@
 # Obscura
 
-End-to-end encrypted messaging built with React Native and ObscuraKit.
-Android is the current release target. iOS has signed internal TestFlight
-builds and foreground interoperability, but push/background delivery is not
-implemented. See
-[`docs/IOS_PARITY.md`](docs/IOS_PARITY.md).
+End-to-end encrypted messaging: a React Native app over ObscuraKit, the
+Kotlin and Swift kits in the [`obscura-native`](obscura-native/) submodule.
+Android is the release target. iOS ships internal TestFlight builds and works in
+the foreground; push is not implemented ([iOS status](docs/IOS_PARITY.md)).
 
-## Architecture
+## Ownership
 
-```text
-React Native application (`src/`)
-  ├── Android host bridge → `obscura-native/kotlin`
-  └── iOS host bridge     → `obscura-native/swift`
-```
+| Layer | Owns |
+| --- | --- |
+| TypeScript app (`src/`) | Model schemas, payload parsing, audience, authorization, merge, expiry, outbox, rendering |
+| ObscuraKit | Auth, friends/devices, Signal, transport, typing, attachment encryption, durable inbox, opaque entry store |
+| Android/iOS hosts | OS lifecycle, permissions, files, push, local notifications, React Native marshalling |
 
-- The TypeScript app owns model schemas, payload parsing, recipients, authorization, merge,
-  expiry, outbox policy, and rendering.
-- ObscuraKit owns authentication, friends/devices, Signal, transport, typing,
-  encrypted attachments, the durable inbox, and opaque entry storage.
-- The Android and iOS host layers own OS lifecycle, permissions, files, push,
-  notifications, and React Native marshalling.
+Never move application semantics into native code. Contracts:
+[`DOMAIN_CONTRACT.md`](docs/DOMAIN_CONTRACT.md) (app),
+[`BRIDGE.md`](docs/BRIDGE.md) (React Native bridge),
+[`KIT_API.md`](https://github.com/obscura-messaging/obscura-native/blob/7b72b52d033f098f5444d38bf8d4608120efa8c2/docs/KIT_API.md) (kit).
 
-Contracts: [`docs/DOMAIN_CONTRACT.md`](docs/DOMAIN_CONTRACT.md) (app
-semantics), [`docs/BRIDGE.md`](docs/BRIDGE.md) (React Native bridge), and
-[`KIT_API.md`](https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md) (kit).
+## Where things live
 
-## Setup
+| Responsibility | Path |
+| --- | --- |
+| Models | `src/models/schema.ts` |
+| Conversation IDs, audience, field types | `src/domain/{conversation,audience,fields}.ts` |
+| Authorization and drain planning | `src/domain/drain.ts` |
+| Merge | `src/domain/merge.ts` |
+| Seen receipts and expiry rules | `src/domain/{seen,expiry}.ts` |
+| Inbox drain, writes and outbox, expiry sweep, login | `src/state/{drainInbox,writeEntry,expiry,login}.ts` |
+| Session, events and reactive state | `src/state/store.ts` |
+| Bridge facade | `src/native/ObscuraModule.ts` |
+| Native hosts | `android/app/src/main/java/dev/barrelmaker/obscura/`, `ios/Obscura/` |
+| Push test sender | [`tools/push-sender/`](tools/push-sender/README.md) |
 
-Start with [`CONTRIBUTING.md`](CONTRIBUTING.md), which also covers checks and
-updating the native pin. Platform notes are in
-[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+## Docs
 
-## Project layout
-
-```text
-src/domain/                 Pure authorization, audience, merge, and drain planning
-src/models/schema.ts        Application model declarations
-src/state/                  Inbox/outbox effects and Zustand state
-src/native/ObscuraModule.ts Typed React Native bridge facade
-src/screens/                Shared UI
-android/.../obscura/        Android host, bridge, lifecycle, and notifications
-ios/Obscura/                iOS host and bridge
-obscura-native/             Pinned native source submodule
-tools/push-sender/          Real Android push test sender
-```
-
-## Internal builds
-
-After `main` CI passes, an Obscura owner can run **Actions → Release / Internal**
-to send signed builds to Android and iOS testers. This does not publish to
-Google Play or the public App Store. See
-[Android distribution](docs/ANDROID_DISTRIBUTION.md) and
-[iOS distribution](docs/IOS_DISTRIBUTION.md) for signing and tester setup.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): setup, checks, workflow, native pin.
+- [`PUSH_NOTIFICATIONS.md`](docs/PUSH_NOTIFICATIONS.md): push privacy and transport.
+- [`ANDROID_DISTRIBUTION.md`](docs/ANDROID_DISTRIBUTION.md),
+  [`IOS_DISTRIBUTION.md`](docs/IOS_DISTRIBUTION.md): internal tester builds.
+- [`ROADMAP.md`](ROADMAP.md): what is done and what is next.
