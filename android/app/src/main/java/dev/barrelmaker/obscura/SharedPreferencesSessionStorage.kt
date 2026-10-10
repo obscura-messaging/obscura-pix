@@ -1,48 +1,54 @@
 package dev.barrelmaker.obscura
 
 import android.content.SharedPreferences
+import android.util.Log
 import dev.barrelmaker.obscura.kit.persistence.SessionStorage
+import org.json.JSONObject
 
 /**
- * Android-backed [SessionStorage] for the kit, on a dedicated SharedPreferences
- * file. The kit owns *what* to persist and *when* (connect + token rotation);
- * this just reads/writes the blob, so there is no second, app-owned session
- * state machine.
- *
- * Honors the [SessionStorage] replace-whole-blob contract: [save] clears the
- * file first, then writes exactly `data` — so a key absent from `data` is gone.
- * Callers load-merge-save, so nothing is dropped. Values are String or Int
- * (registrationId).
+ * The kit's [SessionStorage]: the whole session as one JSON blob wrapped by [LocalKeystore],
+ * because it holds the refresh token. [save] replaces the blob entirely.
  */
 class SharedPreferencesSessionStorage(
     private val prefs: SharedPreferences
 ) : SessionStorage {
 
     override fun save(data: Map<String, Any?>) {
-        // commit() (synchronous) rather than apply(): the persisted refresh token
-        // is single-use and rotated on every refresh. If the process dies before an
-        // async apply() reaches disk, a consumed refresh token would be restored on
-        // next launch and 401 — the exact failure this storage exists to prevent.
-        val editor = prefs.edit().clear()
+        val json = JSONObject()
         for ((key, value) in data) {
             when (value) {
                 null -> { /* omit — replace semantics: absent key = not stored */ }
-                is Int -> editor.putInt(key, value)
-                is Number -> editor.putInt(key, value.toInt())
-                is Boolean -> editor.putBoolean(key, value)
-                else -> editor.putString(key, value.toString())
+                is Number -> json.put(key, value.toInt())
+                is Boolean -> json.put(key, value)
+                else -> json.put(key, value.toString())
             }
         }
-        editor.commit()
+        // Synchronous: refresh tokens are single-use, so losing a write to process death means a 401.
+        prefs.edit()
+            .clear()
+            .putString(BLOB, LocalKeystore.wrap(json.toString().toByteArray(Charsets.UTF_8)))
+            .commit()
     }
 
     override fun load(): Map<String, Any?>? {
-        val all = prefs.all
-        if (all.isEmpty()) return null
-        return all
+        val wrapped = prefs.getString(BLOB, null) ?: return null
+        val plaintext = try {
+            LocalKeystore.unwrap(wrapped)
+        } catch (e: LocalKeystore.SecretUnavailableException) {
+            Log.e(TAG, "session blob unreadable; signing out", e)
+            clear()
+            return null
+        }
+        val json = JSONObject(String(plaintext, Charsets.UTF_8))
+        return json.keys().asSequence().associateWith { json.get(it) }
     }
 
     override fun clear() {
         prefs.edit().clear().commit()
+    }
+
+    private companion object {
+        const val TAG = "SessionStorage"
+        const val BLOB = "session_blob"
     }
 }
