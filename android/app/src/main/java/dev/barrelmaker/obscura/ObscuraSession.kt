@@ -2,11 +2,13 @@ package dev.barrelmaker.obscura
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.database.sqlite.SQLiteDatabaseCorruptException
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import dev.barrelmaker.obscura.kit.AuthState
 import dev.barrelmaker.obscura.kit.ConnectionState
@@ -14,6 +16,7 @@ import dev.barrelmaker.obscura.kit.ObscuraClient
 import dev.barrelmaker.obscura.kit.ObscuraConfig
 import dev.barrelmaker.obscura.kit.ObscuraLogger
 import dev.barrelmaker.obscura.kit.db.ObscuraDatabase
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -167,7 +170,17 @@ object ObscuraSession {
     private fun buildClient(username: String): ObscuraClient {
         destroyClient()
         val dbName = "obscura_${username}.db"
-        val driver = AndroidSqliteDriver(ObscuraDatabase.Schema, appContext, dbName)
+        System.loadLibrary("sqlcipher")
+        val driver = try {
+            openDatabase(username, dbName)
+        } catch (e: Exception) {
+            if (!isUndecryptable(e)) throw e
+            // Unreadable without its key: start over, and the next login provisions a new device.
+            Log.e(TAG, "Database for $username cannot be decrypted; discarding it", e)
+            LocalKeystore.discardDatabase(appContext, username, dbName)
+            sessionStorage.clear()
+            openDatabase(username, dbName)
+        }
         val c = ObscuraClient(
             ObscuraConfig(apiUrl = API_URL),
             externalDriver = driver,
@@ -179,6 +192,30 @@ object ObscuraSession {
         Log.d(TAG, "Client built (db=$dbName)")
         return c
     }
+
+    /** Opens the user's SQLCipher database and reads once, so a bad key fails here. */
+    private fun openDatabase(username: String, dbName: String): AndroidSqliteDriver {
+        val key = LocalKeystore.databaseKey(appContext, username)
+        val driver = AndroidSqliteDriver(
+            ObscuraDatabase.Schema, appContext, dbName,
+            factory = SupportOpenHelperFactory(key),
+        )
+        try {
+            driver.executeQuery(null, "SELECT count(*) FROM sqlite_master", { it.next(); QueryResult.Unit }, 0)
+        } catch (e: Exception) {
+            driver.close()
+            throw e
+        }
+        return driver
+    }
+
+    /** A lost key or a file SQLCipher cannot read. Transient errors (full disk, lock) are not. */
+    private fun isUndecryptable(e: Throwable): Boolean =
+        generateSequence(e) { it.cause }.any {
+            it is LocalKeystore.SecretUnavailableException ||
+                it is SQLiteDatabaseCorruptException ||
+                it.message?.contains("file is not a database") == true
+        }
 
     /** Build a fresh client for a username (register / login entry point). */
     fun createClient(username: String): ObscuraClient = buildClient(username)
@@ -210,6 +247,11 @@ object ObscuraSession {
 
         Log.d(TAG, "Restoring session: user=$username")
         val c = buildClient(username)
+        // buildClient clears the session when it discards an undecryptable database.
+        if (sessionStorage.load() == null) {
+            destroyClient()
+            return null
+        }
 
         // Kit restores tokens/deviceId, refreshes, defines cached models, connects,
         // and re-persists rotated tokens. Clears storage if the refresh token is dead.
