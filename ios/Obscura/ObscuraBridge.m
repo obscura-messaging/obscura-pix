@@ -9,7 +9,7 @@
 // ── Auth + state reads ────────────────────────────────────────────────────
 RCT_EXTERN_METHOD(registerUser:(NSString *)username password:(NSString *)password
                   resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
-RCT_EXTERN_METHOD(loginSmart:(NSString *)username password:(NSString *)password
+RCT_EXTERN_METHOD(login:(NSString *)username password:(NSString *)password
                   resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(loginAndProvision:(NSString *)username password:(NSString *)password
                   resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)

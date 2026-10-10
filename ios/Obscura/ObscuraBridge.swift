@@ -147,27 +147,23 @@ extension ObscuraBridge {
         }
     }
 
-    @objc(loginSmart:password:resolver:rejecter:)
-    func loginSmart(_ username: String, password: String,
-                    resolver resolve: @escaping RCTPromiseResolveBlock,
-                    rejecter reject: @escaping RCTPromiseRejectBlock) {
+    @objc(login:password:resolver:rejecter:)
+    func login(_ username: String, password: String,
+               resolver resolve: @escaping RCTPromiseResolveBlock,
+               rejecter reject: @escaping RCTPromiseRejectBlock) {
         Task {
             do {
-                // No throwaway login — the DB is keyed by username, so build the
-                // client directly and let its device-first loginSmart establish a
-                // single device-scoped session (Android parity).
+                // The database is keyed by username, so the client is built before login.
                 let c = try ObscuraSession.shared.makeUserClient(username: username)
                 ObscuraSession.shared.replaceClient(c)
-                let scenario = try await c.loginSmart(username, password)
+                let scenario = try await c.login(username, password)
                 let mapped: String
                 switch scenario {
-                case .existingDevice:    mapped = "existingDevice"
-                case .newDevice:         mapped = "newDevice"
-                // onlyDevice isn't in the JS union; both it and deviceMismatch want a
-                // re-provision, which JS triggers via loginAndProvision.
-                case .onlyDevice, .deviceMismatch: mapped = "deviceMismatch"
+                case .existingDevice:     mapped = "existingDevice"
+                case .newDevice:          mapped = "newDevice"
+                case .deviceMismatch:     mapped = "deviceMismatch"
                 case .invalidCredentials: mapped = "invalidCredentials"
-                case .userNotFound:      mapped = "userNotFound"
+                case .userNotFound:       mapped = "userNotFound"
                 }
                 if scenario == .existingDevice { ObscuraSession.shared.saveSession() }
                 resolve(mapped)

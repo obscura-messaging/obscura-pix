@@ -2,7 +2,7 @@ import { NativeEventEmitter, TurboModuleRegistry } from 'react-native';
 
 interface NativeObscuraBridge {
   registerUser(username: string, password: string): Promise<void>;
-  loginSmart(username: string, password: string): Promise<LoginScenario>;
+  login(username: string, password: string): Promise<LoginScenario>;
   loginAndProvision(username: string, password: string): Promise<void>;
   connect(): Promise<void>;
   logout(): Promise<void>;
@@ -143,8 +143,8 @@ export const Obscura = {
   register: (username: string, password: string): Promise<void> =>
     Bridge.registerUser(username, password),
 
-  loginSmart: (username: string, password: string): Promise<LoginScenario> =>
-    Bridge.loginSmart(username, password),
+  login: (username: string, password: string): Promise<LoginScenario> =>
+    Bridge.login(username, password),
 
   loginAndProvision: (username: string, password: string): Promise<void> =>
     Bridge.loginAndProvision(username, password),
