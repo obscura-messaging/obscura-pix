@@ -1,46 +1,33 @@
-# Notification privacy and transport contract
+# Push notifications
 
-Cross-platform rules for push transport and local notification content. Android
-implements them; iOS status is in [`IOS_PARITY.md`](IOS_PARITY.md#push-delivery).
+These rules apply on every platform, but only Android implements them so far
+([iOS status](IOS_PARITY.md#push-delivery)).
 
 ## Privacy invariants
 
-The server sends a silent, content-free wake only:
+- The server sends only a silent wake, `{ "data": { "action": "check" } }`. It
+  MUST NOT include an alert, title, body, sender, preview, attachment metadata
+  or application identifier.
+- The device posts only generic local copy: title `Obscura`, with the text
+  `New pix`, `New message` or `New friend request`.
+- Notification text and tap metadata MUST NOT contain usernames, captions, or
+  conversation, sender or message IDs. They also MUST NOT contain thumbnails or
+  any other content-derived value. A tap may name only a broad destination;
+  Android uses `screen=chat`.
 
-```json
-{ "data": { "action": "check" } }
-```
-
-It MUST NOT include an alert, title, body, sender, content preview, attachment
-metadata, or application identifier.
-
-The device may post only generic local copy:
-
-- `New pix`
-- `New message`
-- `New friend request`
-
-Notification text and tap metadata MUST NOT contain usernames, captions,
-conversation IDs, sender IDs, message IDs, attachment thumbnails, or other
-content-derived values. A tap may name only a broad destination such as the
-chat list.
-
-These restrictions limit what remains in OS notification databases and device
-backups. They apply even when richer previews would be convenient.
+These rules hold even when a richer preview would help, because notification
+content persists in OS databases and backups.
 
 ## Ownership
 
-| Layer          | Responsibility                                                                                                      |
-| -------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Server         | Store a token per device and send a silent wake when its queue changes.                                             |
-| Kit            | Register the token and process pending encrypted envelopes. Never call OS notification APIs or inspect model names. |
-| Native app     | Receive the wake, restore the kit session, drain messages, and post generic local copy when backgrounded.           |
-| TypeScript app | Request permission, register refreshed tokens, and interpret committed inbox rows for in-app state.                 |
+| Layer | Responsibility |
+| --- | --- |
+| Server | Stores one token per device. Sends a silent wake when that device's queue changes. |
+| Kit | Registers the token and processes pending envelopes ([Push drain and events](https://github.com/obscura-messaging/obscura-native/blob/7b72b52d033f098f5444d38bf8d4608120efa8c2/docs/KIT_API.md#push-drain-and-events)). Never posts a notification. |
+| Native host | Receives the wake, restores the session, drains, and posts generic copy while the app is backgrounded. |
+| TypeScript app | Requests permission and registers every token it receives. |
 
-The kit's wake drain is `processPendingMessages(timeout)` ([Push drain and
-events](https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md#push-drain-and-events)). Its count is not notification content.
-
-## Server API
+## Server contract
 
 ```text
 PUT /v1/push-tokens
@@ -48,66 +35,47 @@ Authorization: Bearer <device-scoped JWT>
 Body: { "token": "<fcm-token>" }
 ```
 
-Registration is per device and idempotent. Deleting the device removes its
-token. Invalid tokens are removed when the push provider rejects them.
-
-The default FCM message configuration (target token omitted) is:
+Registration is per device and idempotent. Deleting a device removes its token,
+and the server drops any token the provider rejects. The server and the app must
+use the same Firebase project. The default FCM message (target omitted) is:
 
 ```json
 {
   "data": { "action": "check" },
-  "android": {
-    "priority": "HIGH",
-    "collapseKey": "obscura_check",
-    "ttl": "604800s"
-  },
+  "android": { "priority": "HIGH", "collapseKey": "obscura_check", "ttl": "604800s" },
   "apns": {
-    "headers": {
-      "apns-push-type": "background",
-      "apns-priority": "5",
-      "apns-collapse-id": "obscura_check"
-    },
-    "payload": {
-      "aps": { "content-available": 1 }
-    }
+    "headers": { "apns-push-type": "background", "apns-priority": "5", "apns-collapse-id": "obscura_check" },
+    "payload": { "aps": { "content-available": 1 } }
   }
 }
 ```
 
-The TTL is configurable with `OBSCURA_FCM_TTL_SECS`.
-
-The server and app must use the same Firebase project.
+The server's `OBSCURA_FCM_TTL_SECS` overrides the TTL.
 
 ## Android
 
-`ObscuraSession` is the process-scoped kit owner and sole
-`incomingMessages` consumer. `ObscuraMessagingService` forwards silent wakes to
-that owner; `NotificationHelper` is the only local-notification builder. The
-session posts notifications only while the app is backgrounded.
+- **`ObscuraSession`** owns the kit client for the whole process. It is the only
+  consumer of `incomingMessages`. It posts only while the app is backgrounded.
+  A `pix` posts `New pix`, a `directMessage` posts `New message` and a
+  `FRIEND_REQUEST` posts `New friend request`. `story`, `profile` and `seen`
+  post nothing. An unrecognised model posts `New message`.
+- **`ObscuraMessagingService`** passes each wake to
+  `ObscuraSession.onPushWake`, which runs `processPendingMessages` with a 25 s
+  timeout.
+- **`NotificationHelper`** builds every notification. It uses one fixed ID, so a
+  new notification replaces the previous one.
+- **Tokens.** Granting permission fetches a token. Firebase `onNewToken` passes
+  on rotations without checking the permission, and JS registers every token.
+  Logout clears the local session but keeps the server device and its token.
 
-## Token lifecycle
+Test with [`tools/push-sender`](../tools/push-sender/README.md). The device or
+emulator needs Google Play Services and a build with the real
+`google-services.json` ([CONTRIBUTING](../CONTRIBUTING.md#setup-and-builds)).
 
-Android's explicit permission flow fetches a token only after a grant. Firebase
-`onNewToken`, however, forwards rotations without checking notification
-permission, and JS registers every received token. Logout clears local session
-state but does not delete the server device or its token.
+## Not yet verified against the real provider
 
-## Release verification
-
-Real-provider tests still need to confirm:
-
-- server payloads remain silent and content-free;
-- background wakes drain encrypted envelopes;
-- foreground delivery does not post an OS notification;
-- local copy and tap metadata contain no identities or content;
-- permission denial and later token rotation have an explicit, tested policy;
-- explicit device deletion stops later pushes.
-
-## Android manual check
-
-1. Install a build with the real Firebase configuration and log in.
-2. Press Home or remove the app from recents. Do not force-stop it; Android
-   blocks FCM delivery to force-stopped apps until they are reopened.
-3. Send an encrypted entry with [`tools/push-sender`](../tools/push-sender/).
-4. Verify generic notification copy and inspect `ObscuraSession`,
-   `ObscuraMessagingService`, and `NotificationHelper` in logcat.
+- Payloads stay silent and content-free.
+- Background wakes drain; foreground delivery posts no notification.
+- Copy and tap metadata hold no identities or content.
+- Permission denial followed by token rotation has an explicit, tested policy.
+- Deleting a device stops later pushes.

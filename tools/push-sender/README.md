@@ -1,74 +1,56 @@
 # push-sender
 
-End-to-end push notification tester. Registers a throwaway Obscura user,
-befriends your phone account, and sends real encrypted `directMessage` entries —
-exercising the full server → FCM → device push pipeline.
+A command-line Obscura user for testing push end to end. It sends real
+encrypted `directMessage` entries to your account, exercising the path from
+server to FCM to device.
 
 ## Build
 
 ```bash
-./gradlew installDist
-ln -sf "$PWD/build/install/push-sender/bin/push-sender" ~/bin/push-sender  # optional
+just push-sender-build   # from the repo root; requires JDK 21
+alias push-sender="$PWD/tools/push-sender/build/install/push-sender/bin/push-sender"
 ```
 
-State (sender identity + Signal session DB) is persisted in
-`~/.cache/obscura-push-tester/`. Delete that directory to start over.
+The sender's identity and Signal database live in
+`~/.cache/obscura-push-tester/`. Delete that directory to start over. The tool
+targets `OBSCURA_API_URL`, which defaults to `https://obscura.barrelmaker.dev`.
 
-## Workflow
+## Test a background wake on Android
 
-```bash
-# 1. Register a sender once
-push-sender init
-#   → prints userId/username; saved to ~/.cache/obscura-push-tester/sender.json
+1. Install a build with the real Firebase config, log in, and grant
+   notifications. See [`PUSH_NOTIFICATIONS.md`](../../docs/PUSH_NOTIFICATIONS.md#android).
+2. Create a sender and send it a friend request:
 
-# 2. Send a friend request to your phone account.
-#    NOTE: this takes a raw userId, NOT the app's share code. The code shown in
-#    the app is base64 of {"u":"<userId>","n":"<username>"} — decode it first:
-#      echo '<code>' | base64 -d
-push-sender befriend 019ef27a-dd95-782b-b2e5-349bc3486398 <yourUsername>
+   ```bash
+   push-sender init
+   echo '<your friend code>' | base64 -d   # gives {"u":"<userId>","n":"<username>"}
+   push-sender befriend <userId> <username>
+   ```
 
-# 3. Open the app on the phone, accept the friend request.
+   `befriend` takes your raw user ID, not the app's friend code.
+3. Accept the request in the app.
+4. Press Home or swipe the app out of recents. Do not force-stop it: Android
+   withholds FCM from a force-stopped app until it is opened again.
+5. Run `push-sender send <username> "hello"` or
+   `push-sender ping <username> [count]`.
+6. Check for a generic `New message` notification. Follow
+   `adb logcat -s ObscuraSession ObscuraMessagingService ObscuraBridge`.
+   `NotificationHelper` logs as `ObscuraBridge`. `./logcat.sh` (`-c` clears,
+   `--dump` prints once) omits `ObscuraSession`.
 
-# 4. Send a test message (also exercises the push path when app is killed)
-push-sender send <yourUsername> "Hello from push-sender"
-
-# Burst test
-push-sender ping <yourUsername> 5
-```
-
-To verify the killed-process path, background the app and remove it from
-recents, then run `push-sender ping <yourUsername> 1` and watch `./logcat.sh`.
-Do not force-stop the app; Android suppresses FCM until a force-stopped app is
-opened again.
-
-## Logcat helper
-
-```bash
-./logcat.sh -c    # clear and follow Obscura-relevant tags
-./logcat.sh --dump
-```
-
-Tags filtered: `ObscuraBridge`, `ObscuraMessagingService`, `NotificationHelper`,
-`FirebaseMessaging`, `ReactNativeJS`, `AndroidRuntime`.
+Other commands: `whoami`, `accept-pending`, `friends`, and `devices <username>`
+(the devices a send would target). Run the tool with no arguments for usage.
 
 ## Notes
 
-- Targets `OBSCURA_API_URL` (default `https://obscura.barrelmaker.dev`).
-- The kit is a **Gradle composite build** against the pinned `obscura-native`
-  submodule (`settings.gradle.kts` → `../../obscura-native/kotlin`), matching
-  `android/settings.gradle`. Kit edits show up on the next build — there is no
-  publish step. `OBSCURA_KIT_PATH` overrides the path.
-
-  This replaced a mavenLocal dependency that resolved whatever jar was in
-  `~/.m2`, drifted two months behind the kit, and turned API breaks into
-  runtime surprises. The substitution in `settings.gradle.kts` must stay
-  explicit: the kit declares `groupId` only inside its `publishing` block, so
-  Gradle's automatic coordinate matching does not fire, and a bare
-  `includeBuild` silently falls back to mavenLocal.
-
-- Messages go through `client.send(recipientUserIds, …)` with a JSON payload of
-  `{ conversationId, content }`, matching `directMessage` in
-  `src/models/schema.ts`. `_authorUserId` is deliberately not sent — the app's
-  drain stamps it from the envelope. `conversationId` must be the canonical
-  sorted `userIdA_userIdB` form or the app's inbound authorization discards the
-  entry.
+- **Kit build.** The kit is a Gradle composite build of the pinned
+  `obscura-native/kotlin`, so there is no publish step. `OBSCURA_KIT_PATH`
+  points it at another checkout. The `dependencySubstitution` in
+  `settings.gradle.kts` must stay. The kit sets its `groupId` only inside its
+  `publishing` block, so a bare `includeBuild` silently resolves `mavenLocal`
+  instead.
+- **Payload.** Messages are `{ conversationId, content }`, matching
+  `directMessage` in `src/models/schema.ts`. `conversationId` must be the
+  canonical sorted form, or the app discards the entry. `_authorUserId` is never
+  sent.
+- **Expiry.** Received messages disappear like any other `directMessage`.

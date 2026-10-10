@@ -54,6 +54,7 @@ lint:
 
 # Run every JavaScript CI gate.
 check: test typecheck lint
+    ./scripts/check-native-doc-links.sh
 
 # Create a compile-only Firebase config when no real config exists.
 android-config:
