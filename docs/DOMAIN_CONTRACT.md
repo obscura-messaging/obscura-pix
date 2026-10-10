@@ -32,6 +32,11 @@ application fields or model names.
 accessors that interpret them: `audienceFor(model)` for the send side and
 `modelRules()` for the drain.
 
+Each model declares its field types. A local write whose fields do not match is
+refused, and a received entry that does not match is discarded
+(`invalid-fields`). The screens' entry types are derived from the same
+declarations.
+
 ## Audience resolution
 
 The app passes explicit recipient user IDs to the native send API. Resolution

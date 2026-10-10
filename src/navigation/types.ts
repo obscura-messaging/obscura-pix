@@ -1,8 +1,10 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { MaterialTopTabScreenProps } from '@react-navigation/material-top-tabs';
 import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
-import type { Friend, ModelEntry } from '../native/ObscuraModule';
+import type { Friend } from '../native/ObscuraModule';
 import type { PhotoFile } from 'react-native-vision-camera';
+import type { Entry } from '../domain/merge';
+import type { ModelData } from '../models/schema';
 
 export type MainTabParamList = {
   Camera: undefined;
@@ -46,12 +48,15 @@ export type RootStackParamList = {
   ScanFriend: undefined;
 };
 
+/** The story viewer shows stories and pix alike. */
+export type ViewerEntry = Entry<Partial<ModelData<'story'> & ModelData<'pix'>>>;
+
 export interface StoryGroup {
   /** The transport-attributed author (NATIVE_CONTRACT §0.5). The grouping key for username resolution. */
   userId: string;
   /** Display only — resolved from the friend graph at build time, never read out of a payload. */
   username: string;
-  stories: ModelEntry[];
+  stories: ViewerEntry[];
   isMe: boolean;
 }
 

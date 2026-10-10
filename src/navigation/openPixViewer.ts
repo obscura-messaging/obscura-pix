@@ -1,6 +1,7 @@
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { Friend, ModelEntry } from '../native/ObscuraModule';
+import type { Friend } from '../native/ObscuraModule';
 import type { RootStackParamList, StoryGroup } from './types';
+import type { Entry } from '../domain/merge';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -17,9 +18,9 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * conversation they are showing — an authenticated identity out of the kit's friend graph — so the
  * name comes from there.
  */
-export function openPixViewer(nav: Nav, sender: Friend, entries: ModelEntry[]) {
+export function openPixViewer(nav: Nav, sender: Friend, entries: Entry[]) {
   if (entries.length === 0) return;
-  const stories = [...entries].sort((a, b) => a.timestamp - b.timestamp);
+  const stories = [...entries].sort((a, b) => a.sentAt - b.sentAt);
   const group: StoryGroup = {
     userId: sender.userId,
     username: sender.username,

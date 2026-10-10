@@ -33,6 +33,7 @@
 import { parseConversationId } from './conversation';
 import { merge, type Entry, type MergeRule } from './merge';
 import { AUTHOR_USER_ID } from '../models/schema';
+import { invalidFields, type FieldType } from './fields';
 
 /** The kit's inbox row, narrowed to what the drain actually reads. */
 export interface DrainRow {
@@ -55,6 +56,7 @@ export type DiscardReason =
   | 'unknown-kind'
   | 'unknown-model'
   | 'missing-fields'
+  | 'invalid-fields'
   | 'unparsable-payload'
   | 'unauthorized-sender';
 
@@ -67,6 +69,8 @@ export type DiscardReason =
  */
 export interface ModelRules {
   merge: MergeRule;
+  /** Declared field types; entries that do not match are discarded. */
+  fields: Readonly<Record<string, FieldType>>;
   /**
    * The payload field naming a 1:1 conversation. Set for conversation-scoped models: the id must be
    * canonical two-party and must name **both** this user and the authenticated sender.
@@ -195,6 +199,11 @@ export function planDrain(
 
     const model = row.modelKey;
     const rules = knownModels.get(model)!;
+
+    if (invalidFields(rules.fields, data).length > 0) {
+      plan.discard.push({ id: row.id, reason: 'invalid-fields' });
+      continue;
+    }
 
     const unauthorized = authorize(row, rules, data, selfUserId);
     if (unauthorized !== null) {

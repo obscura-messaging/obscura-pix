@@ -62,7 +62,7 @@ describe('loadEntries', () => {
     await loadEntries('story');
 
     expect(useStore.getState().entries.story).toEqual([
-      { id: 's1', data: { content: 'hi' }, timestamp: 1_000, authorDeviceId: 'd' },
+      { id: 's1', data: { content: 'hi' }, sentAt: 1_000, authorDeviceId: 'd' },
     ]);
   });
 

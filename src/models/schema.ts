@@ -20,6 +20,7 @@
 
 import { DirectRoutingUnresolved, type AudienceConfig } from '../domain/audience';
 import type { ModelRules } from '../domain/drain';
+import type { FieldType, FieldValue } from '../domain/fields';
 import type { MergeRule } from '../domain/merge';
 
 /** App-owned metadata on every stored entry: the authenticated userId of whoever created it. */
@@ -37,12 +38,8 @@ export function profileEntryId(userId: string): string {
 
 /** What one model declares. */
 export interface ModelDeclaration {
-  /**
-   * Documentation only: nothing parses this and no payload is validated against it. It records what
-   * a model carries for a human reading the schema, which is why the values are prose (`'string?'`)
-   * rather than a type vocabulary something could enforce.
-   */
-  fields: Record<string, string>;
+  /** Enforced on every local write and every received entry (`domain/fields.ts`). */
+  fields: Record<string, FieldType>;
   /** How two writes to one entry id reconcile (`domain/merge.ts`). */
   merge: MergeRule;
   /** Who an entry reaches. Omitted means every accepted friend (`domain/audience.ts`). */
@@ -125,6 +122,15 @@ export const obscuraSchema = {
  */
 const declarations: ModelSchema = obscuraSchema;
 
+export type ModelName = keyof typeof obscuraSchema;
+
+type FieldsOf<M extends ModelName> = (typeof obscuraSchema)[M]['fields'];
+
+/** A model's data, typed from its declared fields. */
+export type ModelData<M extends ModelName> = {
+  [K in keyof FieldsOf<M>]: FieldsOf<M>[K] extends FieldType ? FieldValue<FieldsOf<M>[K]> : never;
+};
+
 /**
  * The audience a model declares.
  *
@@ -143,6 +149,14 @@ export function audienceFor(model: string): AudienceConfig | undefined {
   return declarations[model].audience;
 }
 
+/** The declared fields of `model`. Throws on an undeclared model. */
+export function fieldsFor(model: string): Record<string, FieldType> {
+  if (!Object.prototype.hasOwnProperty.call(obscuraSchema, model)) {
+    throw new Error(`'${model}' is not declared in schema.ts`);
+  }
+  return declarations[model].fields;
+}
+
 /**
  * What the drain needs per model: the merge rule and the authorization rules.
  *
@@ -155,6 +169,7 @@ export function modelRules(): Map<string, ModelRules> {
   for (const [model, config] of Object.entries(declarations)) {
     rules.set(model, {
       merge: config.merge,
+      fields: config.fields,
       conversationField: config.audience?.kind === 'conversation' ? config.audience.field : undefined,
       ownerIdPrefix: config.ownerIdPrefix,
     });

@@ -1,26 +1,6 @@
 /**
- * The `react-native` module, as jest sees it.
- *
- * `ObscuraModule.ts` resolves its bridge at **import time**:
- *
- * ```ts
- * const ObscuraBridge = TurboModuleRegistry.get('ObscuraBridge') || NativeModules.ObscuraBridge || null;
- * const Bridge = ObscuraBridge || new Proxy({}, { get: () => noop });
- * ```
- *
- * So the way to give it a real bridge is to make `NativeModules.ObscuraBridge` exist — which means
- * mocking `react-native` itself rather than adding a test seam to production code. That choice
- * matters: it means the tests exercise **the real `ObscuraModule.ts`**, including its
- * `JSON.stringify` calls, its event-name string, and its `getEmitter()` null-check. A test seam
- * would have bypassed exactly the layer most likely to be wrong.
- *
- * `jest.setup.ts` installs this via `jest.mock('react-native', …)`, so every suite gets it without
- * per-file boilerplate.
- *
- * Only the surface pix's tested modules actually touch is implemented. When a test needs more of
- * React Native than this — anything that renders — that is the signal to add a real RN preset and a
- * renderer as a separate jest project, not to grow this file into a reimplementation of the
- * platform.
+ * The `react-native` module as Jest sees it, so tests exercise the real `ObscuraModule.ts` against
+ * `FakeObscuraBridge`. Implements only what the tested modules touch.
  */
 
 import { FakeObscuraBridge } from './FakeObscuraBridge';
@@ -38,10 +18,6 @@ export const fakeBridge = new FakeObscuraBridge();
 export function getFakeBridge(): FakeObscuraBridge {
   return fakeBridge;
 }
-
-export const NativeModules = {
-  ObscuraBridge: fakeBridge,
-};
 
 export const TurboModuleRegistry = {
   get(name: string): unknown {

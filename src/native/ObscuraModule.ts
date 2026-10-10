@@ -1,4 +1,4 @@
-import { NativeModules, NativeEventEmitter, TurboModuleRegistry, type EmitterSubscription } from 'react-native';
+import { NativeEventEmitter, TurboModuleRegistry } from 'react-native';
 
 interface NativeObscuraBridge {
   registerUser(username: string, password: string): Promise<void>;
@@ -48,36 +48,14 @@ interface NativeObscuraBridge {
   getLaunchIntent(): Promise<LaunchIntent | null>;
 }
 
-// Try TurboModuleRegistry first (RN 0.84+), fall back to NativeModules (old arch)
-const ObscuraBridge =
-  (TurboModuleRegistry.get('ObscuraBridge') as NativeObscuraBridge | null) ||
-  (NativeModules.ObscuraBridge as NativeObscuraBridge | undefined) ||
-  null;
-
-const Bridge: NativeObscuraBridge = ObscuraBridge ?? new Proxy({} as NativeObscuraBridge, {
-  get: (_target, property) => () => Promise.reject(
-    new Error(`ObscuraBridge.${String(property)} is unavailable`),
-  ),
-});
+// Also resolves legacy (non-Turbo) modules through the interop layer.
+const Bridge = TurboModuleRegistry.getEnforcing('ObscuraBridge') as unknown as NativeObscuraBridge;
 // ─── Types ───────────────────────────────────────────────
 
 export interface Friend {
   userId: string;
   username: string;
   status: 'pending_sent' | 'pending_received' | 'accepted';
-}
-
-/**
- * An entry as the app holds it in memory.
- *
- * `entryAll` returns `StoredEntry` with opaque JSON; `loadEntries` parses it
- * into this screen-facing shape.
- */
-export interface ModelEntry {
-  id: string;
-  data: Record<string, any>;
-  timestamp: number;
-  authorDeviceId: string;
 }
 
 export interface ResizedImage {
@@ -340,24 +318,10 @@ type _AssertEventTypesMatch =
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _eventTypesMatch: _AssertEventTypesMatch = true;
 
-// Lazy-init emitter — only create when the native module exists.
-let _emitter: NativeEventEmitter | null = null;
-function getEmitter(): NativeEventEmitter | null {
-  if (!_emitter && ObscuraBridge) {
-    _emitter = new NativeEventEmitter(ObscuraBridge as any);
-  }
-  return _emitter;
-}
+const emitter = new NativeEventEmitter(Bridge as any);
 
-/**
- * Subscribe to typed Obscura events.
- *
- * Returns an unsubscribe function. If the native module isn't available
- * (jest, etc.) the subscription is a no-op and the unsubscribe is safe to call.
- */
+/** Subscribe to typed Obscura events. Returns an unsubscribe function. */
 export function onObscuraEvent(handler: (event: ObscuraEvent) => void): () => void {
-  const em = getEmitter();
-  if (!em) return () => {};
-  const sub: EmitterSubscription = em.addListener('ObscuraEvent', handler);
+  const sub = emitter.addListener('ObscuraEvent', handler);
   return () => sub.remove();
 }
