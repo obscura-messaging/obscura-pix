@@ -51,7 +51,7 @@ must implement; "android only" means iOS may either no-op or throw.
 | Method                                  | Args    | Returns         | Platforms |
 | --------------------------------------- | ------- | --------------- | --------- |
 | `registerUser(username, password)`      | strings | `void`          | both      |
-| `loginSmart(username, password)`        | strings | `LoginScenario` | both      |
+| `login(username, password)`             | strings | `LoginScenario` | both      |
 | `loginAndProvision(username, password)` | strings | `void`          | both      |
 | `connect()`                             | —       | `void`          | both      |
 | `logout()`                              | —       | `void`          | both      |

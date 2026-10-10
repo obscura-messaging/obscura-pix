@@ -216,24 +216,21 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun loginSmart(username: String, password: String, promise: Promise) {
+    fun login(username: String, password: String, promise: Promise) {
         scope.launch {
             try {
-                Log.d(TAG, "loginSmart: $username")
                 val c = ObscuraSession.createClient(username)
                 val result = c.login(username, password)
-                val scenario = when (result.scenario) {
+                val scenario = when (result) {
                     LoginScenario.EXISTING_DEVICE -> "existingDevice"
                     LoginScenario.NEW_DEVICE -> "newDevice"
                     LoginScenario.DEVICE_MISMATCH -> "deviceMismatch"
                     LoginScenario.INVALID_CREDENTIALS -> "invalidCredentials"
                     LoginScenario.USER_NOT_FOUND -> "userNotFound"
                 }
-                Log.d(TAG, "loginSmart result: $scenario")
-                if (result.scenario == LoginScenario.EXISTING_DEVICE) c.persistSession()
+                if (result == LoginScenario.EXISTING_DEVICE) c.persistSession()
                 promise.resolve(scenario)
             } catch (e: Exception) {
-                Log.e(TAG, "loginSmart failed: ${e.message}")
                 promise.rejectKit("LOGIN_ERROR", e)
             }
         }

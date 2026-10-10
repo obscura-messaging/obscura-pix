@@ -25,7 +25,7 @@ export function AuthScreen() {
     if (!username || password.length < 12) { setStatus('Password must be 12+ chars'); return; }
     setStatus('Logging in...');
     try {
-      const scenario = await Obscura.loginSmart(username, password);
+      const scenario = await Obscura.login(username, password);
       switch (scenario) {
         case 'existingDevice':
           await Obscura.connect();

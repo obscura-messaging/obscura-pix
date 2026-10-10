@@ -328,9 +328,9 @@ export class FakeObscuraBridge {
     this.__setAuthState('authenticated');
   }
 
-  async loginSmart(username: string, _password: string): Promise<string> {
-    this.record('loginSmart');
-    this.checkFailure('loginSmart');
+  async login(username: string, _password: string): Promise<string> {
+    this.record('login');
+    this.checkFailure('login');
     this.username = username;
     this.__setAuthState('authenticated');
     return 'existingDevice';
