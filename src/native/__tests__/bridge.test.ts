@@ -97,6 +97,17 @@ describe('the entry store', () => {
     expect(await Obscura.entryAll('profile')).toEqual([]);
   });
 
+  it('erases one entry through the bridge and leaves the rest', async () => {
+    await Obscura.entryPut('directMessage', 'keep', '{}', 1, 'd');
+    await Obscura.entryPut('directMessage', 'gone', '{}', 1, 'd');
+
+    await Obscura.entryErase('directMessage', 'gone');
+
+    expect((await Obscura.entryAll('directMessage')).map((e) => e.id)).not.toContain('gone');
+    expect((await Obscura.entryAll('directMessage')).map((e) => e.id)).toContain('keep');
+    expect(bridge.__calls).toContain('entryErase');
+  });
+
   /**
    * `entryPut` is a **blind** upsert by contract (`KIT_API.md` §8.1) — the app decides who wins, so
    * an older write replaces a newer one. A double that merged here would hide an app that forgot to.

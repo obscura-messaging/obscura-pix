@@ -30,6 +30,27 @@ is [`docs/BRIDGE.md`](docs/BRIDGE.md).
 Start with [`CONTRIBUTING.md`](CONTRIBUTING.md). Platform constraints and
 troubleshooting notes are in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
+### iOS device build with a personal team
+
+Without access to the project team, sign with your own team through
+command-line overrides. No tracked files change. The App Group is dropped, and
+the app falls back to its private container.
+
+```bash
+just ios-build   # once, to prepare dependencies
+./obscura-native/swift/scripts/bootstrap-libsignal.sh ios-device
+cd ios && mkdir -p build
+printf '<plist version="1.0"><dict/></plist>' > build/Personal.entitlements
+xcodebuild -workspace Obscura.xcworkspace -scheme Obscura \
+  -destination 'generic/platform=iOS' -configuration Release \
+  -allowProvisioningUpdates \
+  -derivedDataPath build/personal \
+  DEVELOPMENT_TEAM=<TEAM_ID> PRODUCT_BUNDLE_IDENTIFIER=<your.bundle.id> \
+  CODE_SIGN_ENTITLEMENTS=build/Personal.entitlements build
+xcrun devicectl device install app --device <DEVICE_ID> \
+  build/personal/Build/Products/Release-iphoneos/Obscura.app
+```
+
 ## Project layout
 
 ```text
