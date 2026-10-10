@@ -1,8 +1,6 @@
 /**
  * Merge semantics for synced model entries.
  *
- * The application owns these model rules (KIT_API.md §8.2).
- *
  * Two rules, both idempotent. The idempotence is load-bearing, not incidental: the kit's inbox is
  * drained with `peek → process → consume`, so an app that crashes mid-drain reprocesses those rows.
  * Convergence under replay is what makes that safe. **A future non-idempotent rule breaks the drain

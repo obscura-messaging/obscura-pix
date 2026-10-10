@@ -7,12 +7,7 @@ import { readEntries } from './readEntries';
 import { logError } from '../utils/log';
 
 /**
- * Writing an entry: store it locally, then send it (`obscura-native/docs/KIT_API.md` §5, §8.1).
- *
- * This replaces `Obscura.createEntry` / `Obscura.upsertEntry`, and the difference is not cosmetic —
- * those were one call that did four things inside the kit (generate an id, store, resolve an
- * audience, fan out). Three of the four now happen here, because three of the four are application
- * decisions the kit is forbidden to make (NATIVE_CONTRACT §0.4).
+ * Writing an entry: store it locally, then send it (`docs/DOMAIN_CONTRACT.md`, "Local writes").
  *
  * ## The order, and why
  *
@@ -28,8 +23,8 @@ import { logError } from '../utils/log';
  *
  * ## The sender writes its own copy
  *
- * §5 property 2: `send` produces no inbox row for the sender, by design. So this is the *only* place
- * an outgoing entry gets stored — there is no loopback to rely on, and the drain will never see it.
+ * `send` produces no inbox row for the sender, so this is the only place an outgoing entry is
+ * stored.
  */
 
 /**
@@ -48,8 +43,8 @@ export function newEntryId(model: string): string {
 /**
  * A timestamp that is guaranteed to win against what is already stored for this entry.
  *
- * Normally just `Date.now()`. When an existing row is somehow ahead of us — a peer's clock skew
- * within NATIVE_CONTRACT §2.4's 60-second tolerance, or our own clock moving backwards — it steps one
+ * Normally just `Date.now()`. When an existing row is ahead of us — a peer's clock up to 60 s fast
+ * (the kit's future-timestamp clamp), or our own clock moving backwards — it steps one
  * millisecond past it instead. `+1` rather than a larger jump because the goal is only to win this
  * comparison, not to poison every future one.
  */
@@ -109,16 +104,8 @@ export async function writeEntry(args: WriteEntryArgs): Promise<string> {
 
   // `sentAt` must beat whatever is already stored, or a local write can lose to it.
   //
-  // `entryPut` is a BLIND upsert (§8.1) — the app decides who wins — so a lower `sentAt` silently
-  // wins LOCALLY while losing everywhere else, which is the worst possible outcome: the user sees
-  // their edit applied and no peer ever does. That is not hypothetical. NATIVE_CONTRACT §2.4 lets a stored
-  // `sentAt` run up to `now + 60s` (the kit clamps to exactly that), so a peer with a fast clock
-  // leaves a row 45 seconds in our future; anything we write inside that window has a lower
-  // timestamp and loses every REPLACE comparison on every other device. The same happens between
-  // two of a user's own devices with skewed clocks.
-  //
-  // Reading first and stepping past it keeps the local write authoritative, which is what the user
-  // just asked for.
+  // `entryPut` is a blind upsert, so a lower `sentAt` would win locally and lose on every other
+  // device. A stored `sentAt` can be up to 60 s in our future (a peer's fast clock), so step past it.
   //
   // Read and write under the lock together: computing `sentAt` from a row that a concurrent drain
   // then replaces would put us right back where we started.
@@ -127,8 +114,7 @@ export async function writeEntry(args: WriteEntryArgs): Promise<string> {
   // lock across it would let one slow recipient stall every write in the app.
   const sentAt = await withEntryLock(async () => {
     const next = await nextSentAt(model, id);
-    // The author's own device, which is what the merge tie-break compares (NATIVE_CONTRACT §0.10 rule 4). For a
-    // local write this device IS the authenticated author, so nothing needs authenticating.
+    // This device is the author, and the REPLACE tie-break compares author devices.
     await Obscura.entryPut(model, id, JSON.stringify(stored), next, myDeviceId);
     return next;
   });

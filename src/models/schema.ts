@@ -1,21 +1,10 @@
 /**
- * The app's model semantics — the single source of truth for what a model *means*, and the
- * accessors that answer it.
+ * The app's model declarations and their accessors (`docs/DOMAIN_CONTRACT.md`). The kit never
+ * reads them.
  *
- * Read by the APP, not by the kit: `drainInbox` takes each model's `merge` rule plus its
- * authorization rules, and `writeEntry` takes its `audience`. The kit
- * does not parse application schemas (NATIVE_CONTRACT §0.4).
- *
- * ## Identity is never a payload field
- *
- * There is deliberately no `senderUsername` / `authorUsername` / `recipientUsername` here. A
- * payload-supplied name is attacker-chosen (NATIVE_CONTRACT §0.5, §0.10 rule 5).
- * Attribution comes from the **authenticated** envelope, stamped into
- * `_authorUserId` by the drain or `writeEntry`; display names are resolved from
- * the friend graph at render time.
- *
- * `fields` is documentation now — nothing parses it — but `_authorUserId` is listed on every model
- * because it is the field the screens key on.
+ * No model has a sender or author name field: a payload-supplied name is attacker-chosen.
+ * `_authorUserId` is stamped by the drain or `writeEntry` from the authenticated sender, and
+ * display names come from the friend graph at render time.
  */
 
 import { DirectRoutingUnresolved, type AudienceConfig } from '../domain/audience';
@@ -81,8 +70,7 @@ export const obscuraSchema = {
       captionMeta: 'string?',
     },
     merge: 'APPEND',
-    // Stories are permanent until the app implements `expiresAt` storage and
-    // filtering (KIT_API §8.3).
+    // Stories are permanent until the app implements expiry.
   },
   profile: {
     fields: { displayName: 'string', bio: 'string?', avatarUrl: 'string?', _authorUserId: 'string' },

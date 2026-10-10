@@ -52,7 +52,7 @@ export type RootStackParamList = {
 export type ViewerEntry = Entry<Partial<ModelData<'story'> & ModelData<'pix'>>>;
 
 export interface StoryGroup {
-  /** The transport-attributed author (NATIVE_CONTRACT §0.5). The grouping key for username resolution. */
+  /** The transport-attributed author. The grouping key for username resolution. */
   userId: string;
   /** Display only — resolved from the friend graph at build time, never read out of a payload. */
   username: string;

@@ -126,11 +126,7 @@ describe('drainAndRefresh', () => {
     expect(useStore.getState().entries.story).toHaveLength(1);
   });
 
-  /**
-   * §3.3 rule 7 / §3.5: an inbox that is not empty after a FULL drain means the app has stopped
-   * keeping up, and the chain that ends with the server silently evicting the user's oldest
-   * messages starts exactly there. A number nobody reads is not observability.
-   */
+  /** An inbox that is not empty after a full drain means the app has stopped keeping up. */
   it('logs when the inbox is still not empty after a full drain', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     session();

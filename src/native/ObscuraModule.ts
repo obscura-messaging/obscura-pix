@@ -71,18 +71,15 @@ export interface AttachmentRef {
 }
 
 /**
- * One row from the kit's durable inbox (`obscura-native/docs/KIT_API.md` §3.1).
- *
- * The kit stores bytes it cannot read. `payload` is the app's own JSON for kinds the app
- * understands; for an unknown `kind` it is arbitrary bytes rendered as a lossy string, which is safe
- * only because §4.1 requires such a row to be **discarded without being read**.
+ * One row from the kit's durable inbox. For an unknown `kind`, `payload` is a lossy string, which is
+ * safe because such a row is discarded without being read.
  */
 export interface InboxRow {
   /** Monotonic per install. Drain order. Not a message id. */
   id: number;
   /** The payload arm, e.g. `APP_ENTRY`. `UNKNOWN` for an arm the kit does not know. */
   kind: string;
-  /** Server-stamped transport identity (NATIVE_CONTRACT §0.10). */
+  /** Server-stamped sender. */
   senderUserId: string;
   /** The device whose Signal session decrypted this — cryptographic attribution, and the merge tie-break. */
   senderDeviceId: string | null;
@@ -93,7 +90,7 @@ export interface InboxRow {
   payload: string;
 }
 
-/** One stored entry (`KIT_API.md` §8.1). `data` is the app's JSON, stored verbatim. */
+/** One stored entry. `data` is the app's JSON, stored verbatim. */
 export interface StoredEntry {
   id: string;
   data: string;
@@ -172,7 +169,7 @@ export const Obscura = {
   validateAndApproveLink: (code: string): Promise<void> =>
     Bridge.validateAndApproveLink(code),
 
-  // ─── Kit data surface (obscura-native/docs/KIT_API.md §3, §5, §8.1) ────
+  // ─── Kit data surface ────
   //
   // `inbox` is how messages arrive, `entries` is where the app keeps what it made of them, and
   // `sendEntry` is how they leave. Nothing here parses a payload on either side of the bridge.
@@ -183,17 +180,14 @@ export const Obscura = {
   /** Drop rows the app has durably processed. Idempotent; a subset is fine. */
   inboxConsume: (ids: number[]): Promise<void> => Bridge.inboxConsume(ids),
 
-  /**
-   * Drop rows the app can NEVER process. This is data loss chosen deliberately — the server's copy
-   * is already gone — so `reason` is required and the kit logs it as a security event (§3.3 rule 5).
-   */
+  /** Drop rows the app can never process. Permanent data loss; the kit logs `reason`. */
   inboxDiscard: (ids: number[], reason: string): Promise<void> =>
     Bridge.inboxDiscard(ids, reason),
 
-  /** How many rows are waiting. Unbounded growth means the app stopped draining (§3.3 rule 7). */
+  /** How many rows are waiting. Unbounded growth means the app stopped draining. */
   inboxDepth: (): Promise<number> => Bridge.inboxDepth(),
 
-  /** Blind upsert — the APP decides who wins, so merge before calling this (§8.1). */
+  /** Blind upsert: merge before calling this. */
   entryPut: (
     model: string,
     id: string,
@@ -206,10 +200,10 @@ export const Obscura = {
 
   entryAll: (model: string): Promise<StoredEntry[]> => Bridge.entryAll(model),
 
-  /** Securely remove one local entry (§8.1). The app decides when; not synced to peers. */
+  /** Securely remove one local entry. The app decides when; not synced to peers. */
   entryErase: (model: string, id: string): Promise<void> => Bridge.entryErase(model, id),
 
-  /** The caller names recipients (DOMAIN_CONTRACT). The kit resolves no entry audience. */
+  /** The caller names recipients; the kit resolves no audience. */
   sendEntry: (
     recipientUserIds: string[], modelKey: string, entryId: string,
     sentAt: number, payloadJson: string,

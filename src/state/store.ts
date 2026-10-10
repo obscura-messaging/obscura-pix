@@ -174,9 +174,8 @@ export async function drainAndRefresh(alsoRefresh?: string): Promise<void> {
       }
     }
 
-    // §3.3 rule 7 / §3.5: a number nobody reads is not observability. If the inbox is not empty
-    // after a full drain, the app has stopped keeping up — and the chain that ends in the SERVER
-    // silently evicting the user's oldest messages starts exactly here.
+    // An inbox that is not empty after a full drain means the app has stopped keeping up; surface it
+    // before the kit's persistence fails and the server queue fills.
     const depth = await Obscura.inboxDepth();
     if (depth > 0) {
       logError('inbox.notDrained', new Error(`${depth} row(s) still in the inbox after a full drain`));
@@ -355,13 +354,8 @@ export async function loadSession(): Promise<void> {
       .catch((e) => logError('bootstrap.conn', e)),
   ]);
 
-  // Android push can decrypt, persist, and ACK with no JS runtime, so no
-  // `messageReceived` event is emitted for those rows. Cold-start sync discovers
-  // them independently of the best-effort event path.
-  //
-  // The emit is best-effort by design (NATIVE_CONTRACT §0.9 rule 4 permits dropping the notification, since
-  // the row is the delivery path) — which is exactly why the row must have a trigger that does not
-  // depend on the notification.
+  // Android push can persist and ack rows with no JS runtime, and `messageReceived` may be dropped,
+  // so cold start drains independently of the event.
   //
   // Awaited on the identity pulls above, not fired alongside them: the drain needs `getUserId()` to
   // authorize what it stores, and the outbox flush reads the identity out of the store.

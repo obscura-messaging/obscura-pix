@@ -1,422 +1,219 @@
 # Obscura bridge contract
 
-This document defines the behavior of the JS-to-native bridge. The executable
-method and event shapes live in
-[`src/native/ObscuraModule.ts`](../src/native/ObscuraModule.ts). Android, iOS,
-the test fixture, and this document must match that surface. Platform gaps are
-listed in [`IOS_PARITY.md`](IOS_PARITY.md).
+The JS-to-native bridge. [`src/native/ObscuraModule.ts`](../src/native/ObscuraModule.ts)
+is authoritative for method and event shapes; Android, iOS, the test fixture and
+this document must match it. Kit semantics behind the bridge are defined in
+[`KIT_API.md`][kit]. iOS gaps are in [`IOS_PARITY.md`](IOS_PARITY.md).
 
 ## Design principles
 
-- **Bytes don't cross the bridge.** Files are referenced by absolute path.
-  Anything that wants to share bytes between JS and native goes through the
-  filesystem — JS receives a path, hands a path back to native for upload.
-  No base64 round-trips, no megabyte-sized strings flying across the bridge.
-- **Nothing parses a payload, on either side.** `data` / `payload` cross as
-  opaque JSON **strings**. The kit stores bytes it cannot read
-  ([`NATIVE_CONTRACT.md` §0.4](https://github.com/obscura-messaging/obscura-native/blob/591a659/docs/NATIVE_CONTRACT.md)); the app parses them once, on
-  the way in (`store.ts`'s `loadEntries`). There is no schema on this bridge —
-  `src/models/schema.ts` is read by the app alone and never crosses.
-- **The caller names the recipients.** `sendEntry` takes a userId list and the
-  kit fans out to exactly those (plus the author's own _other_ devices). It
-  resolves no audience of its own. Audience resolution is
-  `src/domain/audience.ts`.
-- **Identity comes from the envelope.** `inboxPeek` returns `senderUserId` /
-  `senderDeviceId`, stamped by the server and unforgeable by the sender
-  (`NATIVE_CONTRACT.md` §0.10). A bridge MUST NOT synthesize either from payload content.
-- **One event stream, discriminated by `type`.** All native → JS events flow
-  through `ObscuraEvent` with `{ type, …fields }`. Adding an event type means
-  updating both the TS union and both native implementations.
-- **Promises for RPC, events for everything reactive.** Methods return
-  `Promise<T>`; state changes / messages / typing arrive via events.
+- **Paths, not bytes.** Files cross as absolute paths; no base64.
+- **Payloads are opaque JSON strings.** Neither bridge parses `data` or
+  `payload`. The app parses them; `src/models/schema.ts` never crosses.
+- **The caller names recipients.** `sendEntry` and the typing methods take
+  user IDs; audience resolution is `src/domain/audience.ts`.
+- **Identity comes from the envelope.** `senderUserId` / `senderDeviceId` come
+  from the kit ([Envelope identity][kit-identity]); a bridge never derives
+  them from payload content.
+- **One event stream.** All native-to-JS events are `ObscuraEvent`,
+  discriminated by `type`.
+- **Promises for calls, events for changes.**
 
 ## Rejections
 
-A rejection carries a `code`. Kit-level failures use one of `NOT_AUTHENTICATED`
+A rejection carries a `code`. Kit failures use one of `NOT_AUTHENTICATED`
 `NOT_PROVISIONED` `NOT_FRIENDS` `NO_DEVICES` `NO_MESSENGER` `TIMEOUT`
-`DEVICE_LINK_FAILED` `SEND_FAILED`; anything else falls back to a per-method
-code (`INBOX_PEEK_ERROR`, `ENTRY_PUT_ERROR`, …).
-
-`DIRECT_ROUTING_UNRESOLVED` is **not** a bridge code. No kit throws it any more
-— audience resolution is the app's (`DOMAIN_CONTRACT.md`) — and it is raised by
-`src/domain/audience.ts` without crossing this boundary.
+`DEVICE_LINK_FAILED` `SEND_FAILED`; anything else gets a per-method code
+(`INBOX_PEEK_ERROR`, `ENTRY_PUT_ERROR`, ...). `DIRECT_ROUTING_UNRESOLVED` is an
+app error and never crosses the bridge.
 
 ## Methods
 
-All methods return a `Promise`. The "both" column means both Android and iOS
-must implement; "android only" means iOS may either no-op or throw.
+All methods return a `Promise`.
 
-### Auth
+### Auth and state
 
-| Method                                  | Args    | Returns         | Platforms |
-| --------------------------------------- | ------- | --------------- | --------- |
-| `registerUser(username, password)`      | strings | `void`          | both      |
-| `login(username, password)`             | strings | `LoginScenario` | both      |
-| `loginAndProvision(username, password)` | strings | `void`          | both      |
-| `connect()`                             | —       | `void`          | both      |
-| `logout()`                              | —       | `void`          | both      |
+| Method                                  | Args    | Returns           | Platforms |
+| --------------------------------------- | ------- | ----------------- | --------- |
+| `registerUser(username, password)`      | strings | `void`            | both      |
+| `login(username, password)`             | strings | `LoginScenario`   | both      |
+| `loginAndProvision(username, password)` | strings | `void`            | both      |
+| `connect()`                             | —       | `void`            | both      |
+| `logout()`                              | —       | `void`            | both      |
+| `getConnectionState()`                  | —       | `ConnectionState` | both      |
+| `getAuthState()`                        | —       | `AuthState`       | both      |
+| `getUserId()`                           | —       | `string \| null`  | both      |
+| `getUsername()`                         | —       | `string \| null`  | both      |
+| `getDeviceId()`                         | —       | `string \| null`  | both      |
 
-`LoginScenario` is one of: `existingDevice` `newDevice`
-`deviceMismatch` `invalidCredentials` `userNotFound`.
-
-### Current state (reads of kit state)
-
-| Method                 | Returns           | Platforms |
-| ---------------------- | ----------------- | --------- |
-| `getConnectionState()` | `ConnectionState` | both      |
-| `getAuthState()`       | `AuthState`       | both      |
-| `getUserId()`          | `string \| null`  | both      |
-| `getUsername()`        | `string \| null`  | both      |
-| `getDeviceId()`        | `string \| null`  | both      |
-
+`LoginScenario` outcomes are defined in [Login][kit-login].
 `ConnectionState`: `disconnected` `connecting` `reconnecting` `connected`.
-`AuthState`: `loggedOut` `authenticated` `pendingApproval`.
+`AuthState`: `loggedOut` `authenticated` `pendingApproval`. The drain stores
+nothing until `getUserId` returns a value, since it cannot authorize without it.
 
-`getUserId` is load-bearing beyond display: the inbox drain refuses to store
-anything without it, because it cannot authorize a write without knowing who
-this device is.
+### Friends and devices
 
-### Friends
+| Method                         | Args   | Returns                                | Platforms |
+| ------------------------------ | ------ | -------------------------------------- | --------- |
+| `acceptFriend(userId)`         | string | `void`                                 | both      |
+| `getFriendCode()`              | —      | `string` (base64-wrapped JSON `{n,u}`) | both      |
+| `addFriendByCode(code)`        | string | `void`                                 | both      |
+| `getFriends()`                 | —      | `Friend[]`                             | both      |
+| `generateLinkCode()`           | —      | `string`                               | both      |
+| `validateAndApproveLink(code)` | string | `void`                                 | both      |
 
-| Method                  | Args   | Returns                                | Platforms |
-| ----------------------- | ------ | -------------------------------------- | --------- |
-| `acceptFriend(userId)`  | string | `void`                                 | both      |
-| `getFriendCode()`       | —      | `string` (base64-wrapped JSON `{n,u}`) | both      |
-| `addFriendByCode(code)` | string | `void`                                 | both      |
-| `getFriends()`          | —      | `Friend[]`                             | both      |
+`Friend = { userId, username, status: 'pending_sent' | 'pending_received' | 'accepted' }`.
+The friend graph is the app's only source of display names.
 
-`Friend = { userId, username, status: 'pending_sent' \| 'pending_received' \| 'accepted' }`.
+### Inbox and entries
 
-The friend graph is the app's **only** source of display names (`NATIVE_CONTRACT.md` §0.5). A
-name that did not come from here came from a peer.
+| Method                                                                     | Args                                                 | Returns         | Platforms |
+| -------------------------------------------------------------------------- | ---------------------------------------------------- | --------------- | --------- |
+| `inboxPeek(limit)`                                                         | number                                               | `InboxRow[]`    | both      |
+| `inboxConsume(ids)`                                                        | number[]                                             | `void`          | both      |
+| `inboxDiscard(ids, reason)`                                                | number[], string                                     | `void`          | both      |
+| `inboxDepth()`                                                             | —                                                    | `number`        | both      |
+| `entryPut(model, id, dataJson, sentAt, authorDeviceId, localMetadataJson)` | string, string, string, number, string, string\|null | `void`          | both      |
+| `entryAll(model)`                                                          | string                                               | `StoredEntry[]` | both      |
+| `entryErase(model, id)`                                                    | string, string                                       | `void`          | both      |
 
-### Device linking
+Semantics: [Inbox][kit-inbox] and [Entry store][kit-entry-store].
+`InboxRow` and `StoredEntry` are the kit records with `payload` / `data` and
+`localMetadata` as strings. `entryPut` is a blind upsert: the app merges first
+(`src/domain/merge.ts`). It emits no event; the app refreshes itself.
 
-| Method                         | Args   | Returns  | Platforms |
-| ------------------------------ | ------ | -------- | --------- |
-| `generateLinkCode()`           | —      | `string` | both      |
-| `validateAndApproveLink(code)` | string | `void`   | both      |
-
-### The inbox ([`KIT_API.md` §3](https://github.com/obscura-messaging/obscura-native/blob/591a659/docs/KIT_API.md))
-
-How messages arrive. The kit persists a row, ACKs, and then notifies — and
-**an ACK is a DELETE**, so once a row exists the server's copy is gone and the
-row is the only copy of that message anywhere.
-
-| Method                      | Args             | Returns      | Platforms |
-| --------------------------- | ---------------- | ------------ | --------- |
-| `inboxPeek(limit)`          | int              | `InboxRow[]` | both      |
-| `inboxConsume(ids)`         | number[]         | `void`       | both      |
-| `inboxDiscard(ids, reason)` | number[], string | `void`       | both      |
-| `inboxDepth()`              | —                | number       | both      |
-
-```ts
-InboxRow = {
-  id: number             // monotonic per install; drain order. NOT a message id.
-  kind: string           // the client.proto payload arm, e.g. "APP_ENTRY"
-  senderUserId: string           // server-stamped (NATIVE_CONTRACT §0.10)
-  senderDeviceId: string|null    // the decrypting session's address — the merge tie-break
-  modelKey: string|null  // AppEntry-derived, so null for every other kind
-  entryId: string|null
-  sentAt: number|null    // peer-supplied; clamped per NATIVE_CONTRACT §2.4 before storage
-  payload: string        // opaque JSON string
-}
-```
-
-Implementations MUST:
-
-- **`inboxPeek` is side-effect free.** Peeking twice without consuming returns
-  the same rows, in `id` order. That is the crash-safety property the drain
-  depends on, not a bug (§3.3 rule 3).
-- **Delete a row only on `inboxConsume` or `inboxDiscard`.** Not on reconnect,
-  not on logout, not on a size cap, not on a TTL (§3.3 rule 2). A device wipe
-  or remote revocation is the one carve-out, and it destroys the store rather
-  than selecting rows.
-- **`inboxConsume` is idempotent and accepts a subset.** Partial progress is
-  normal.
-- **`inboxDiscard` requires a non-empty `reason`** and MUST log it as a
-  security-relevant event (§3.3 rule 5). It is data loss chosen deliberately.
-  The app logs it too — a discard must never be the quiet path.
-- **Dedupe internally on the server envelope id** (`UNIQUE` + `INSERT OR IGNORE`, §3.3 rule 8).
-  Persist-then-ack _guarantees_ redelivery: the ack is best-effort and its
-  failure is swallowed, so the same envelope arriving twice is routine.
-- **`senderDeviceId` comes from the address of the session that decrypted the
-  message**, never from a wire field (`NATIVE_CONTRACT.md` §0.10 rule 4).
-
-There is deliberately **no insert**: the inbox is kit-write, app-read-and-delete
-(§3.3 rule 9). The sending device gets no inbox row for its own send and writes
-its own entry directly.
-
-### The entry store ([`KIT_API.md` §8.1](https://github.com/obscura-messaging/obscura-native/blob/591a659/docs/KIT_API.md))
-
-Where the app keeps what it made of the inbox. The kit owns the table; it has no
-opinion about the contents.
-
-| Method                                                                      | Args                                            | Returns         | Platforms |
-| --------------------------------------------------------------------------- | ----------------------------------------------- | --------------- | --------- |
-| `entryPut(model, id, dataJson, sentAt, authorDeviceId, localMetadataJson?)` | string, string, string, number, string, string? | `void`          | both      |
-| `entryAll(model)`                                                           | string                                          | `StoredEntry[]` | both      |
-| `entryErase(model, id)`                                                     | string, string                                  | `void`          | both      |
-
-`StoredEntry = { id, data: string, sentAt, authorDeviceId, localMetadata }`. `data` is application
-JSON; `localMetadata` is opaque device-local bookkeeping and is never sent.
-
-`entryPut` is a **BLIND upsert**: an older write overwrites a newer one, because
-by the time a write reaches the bridge the app has already decided who wins
-(`src/domain/merge.ts`). A bridge that merged would hide an app that forgot to.
-
-`entryErase` securely removes one local entry: the kit deletes under
-`secure_delete` and truncates the WAL, so the content is unrecoverable from the
-database files. Erasing a missing entry is a no-op. It is local only; the app
-decides when to erase and each device erases its own copy.
-
-**No `entriesChanged` event.** `entryPut` is a plain write and emits nothing;
-the app refreshes explicitly, because it is the app that knows what changed.
-
-### Send ([`KIT_API.md` §5](https://github.com/obscura-messaging/obscura-native/blob/591a659/docs/KIT_API.md))
+### Send and typing
 
 | Method                                                                | Args                                     | Returns | Platforms |
 | --------------------------------------------------------------------- | ---------------------------------------- | ------- | --------- |
 | `sendEntry(recipientUserIds, modelKey, entryId, sentAt, payloadJson)` | string[], string, string, number, string | `void`  | both      |
+| `sendTyping(recipientUserIds, conversationId)`                        | string[], string                         | `void`  | both      |
+| `stopTyping(recipientUserIds, conversationId)`                        | string[], string                         | `void`  | both      |
+| `observeTyping(conversationId)`                                       | string                                   | `void`  | both      |
+| `stopObservingTyping(conversationId)`                                 | string                                   | `void`  | both      |
 
+Semantics: [Send][kit-send].
+An empty `recipientUserIds` is a self-sync to the author's other devices. The
+sender gets no inbox row for its own send and writes its own entry.
+`conversationId` is an opaque UI context. While an observation is active the
+bridge emits [`typingChanged`](#typingchanged).
+
+### Attachments and images
+
+| Method                                      | Args             | Returns                     | Platforms |
+| ------------------------------------------- | ---------------- | --------------------------- | --------- |
+| `uploadAttachment(filePath)`                | string           | `{ id, contentKey, nonce }` | both      |
+| `downloadAttachment(id, contentKey, nonce)` | strings          | absolute file path          | both      |
+| `resizeImage(srcPath, maxDim, quality)`     | string, int, int | `{ path, width, height }`   | both      |
+| `writeTestImage(width, height)`             | ints             | `{ path, width, height }`   | both      |
+
+Encryption: [Attachments][kit-attachments].
+`contentKey` and `nonce` are base64; the app stores the triple in its own
+payload. `uploadAttachment` leaves the source file alone.
+
+`downloadAttachment` decrypts to `<cacheDir>/attachments/<safeId>.<ext>`, with
+`ext` `jpg`, `mp4` or `mov` chosen from the content. This file cache is the
+only decrypted copy. Implementations MUST:
+
+- sanitize the id to a safe filename;
+- return an existing non-empty cached file without downloading;
+- publish atomically (write a sibling temp file, then rename), so a concurrent
+  call never sees a partial file.
+
+Server blobs expire after 30 days and inbox rows do not, so an undrained row can
+outlive its media.
+
+`resizeImage` re-encodes as JPEG so the largest side is at most `maxDim` px.
 Implementations MUST:
 
-- Fan out to every device of every listed userId, **plus the author's own other
-  devices**, and exclude the sending device. A caller cannot opt out of
-  self-sync and cannot accidentally encrypt to itself.
-- Resolve nothing. An empty `recipientUserIds` is a legitimate self-sync, not an
-  error.
-- Resolve when the submission is durably queued, not when delivered. Reject only
-  when the send reached **nobody** — a partial failure is best-effort by design.
+- apply EXIF orientation, so output pixels are in display orientation;
+- bound peak memory for large sources (Android: two-pass `inSampleSize`
+  decode; iOS: ImageIO thumbnailing);
+- reject `maxDim <= 0` and clamp `quality` to `1..100`;
+- reject on out-of-memory rather than hang.
 
-### Typing signals
+`writeTestImage` writes a solid-color JPEG for the no-camera fallback in
+`CameraScreen` and rejects zero or very large dimensions. Neither method
+modifies its source.
 
-| Method                                         | Args             | Returns | Platforms |
-| ---------------------------------------------- | ---------------- | ------- | --------- |
-| `sendTyping(recipientUserIds, conversationId)` | string[], string | `void`  | both      |
-| `stopTyping(recipientUserIds, conversationId)` | string[], string | `void`  | both      |
-| `observeTyping(conversationId)`                | string           | `void`  | both      |
-| `stopObservingTyping(conversationId)`          | string           | `void`  | both      |
+### Push and launch
 
-While an observation is active, the bridge emits
-[`typingChanged`](#typingchanged) whenever the typer set for that
-conversation changes.
+| Method                     | Args   | Returns                      | Platforms                      |
+| -------------------------- | ------ | ---------------------------- | ------------------------------ |
+| `requestPushPermission()`  | —      | `boolean` (granted)          | both; token event Android only |
+| `registerPushToken(token)` | string | `void`                       | both                           |
+| `getLaunchIntent()`        | —      | `{ screen: string } \| null` | both; iOS returns null         |
 
-Signals are **droppable** (KIT_API §4): ephemeral by design, never inbox rows. The caller names
-recipients explicitly; `conversationId` is an opaque UI context.
+`requestPushPermission` shows the OS prompt if undecided and resolves `true`
+only on a grant. On Android a grant also fetches the FCM token and emits
+[`pushTokenReceived`](#pushtokenreceived); see [`PUSH_NOTIFICATIONS.md`](PUSH_NOTIFICATIONS.md).
 
-### Attachments (path-based)
-
-Bytes never cross the bridge. `uploadAttachment` reads from a local file path;
-`downloadAttachment` decrypts to a cache file and returns its absolute path.
-
-| Method                                      | Args    | Returns                     | Platforms |
-| ------------------------------------------- | ------- | --------------------------- | --------- |
-| `uploadAttachment(filePath)`                | string  | `{ id, contentKey, nonce }` | both      |
-| `downloadAttachment(id, contentKey, nonce)` | strings | absolute file path          | both      |
-
-The app stores `{id, contentKey, nonce}` inside its own payload; the kit treats
-them as opaque. Note the coupling: attachment blobs expire server-side at 30
-days while inbox rows have no expiry, so an unconsumed row can outlive its media.
-
-Downloads are cached at `<cacheDir>/attachments/<safeId>.jpg`; repeat calls
-short-circuit on cache hit. Implementations MUST:
-
-- Sanitize the id to a safe filename before writing (no path traversal).
-- **Publish atomically.** Write to a sibling temp file first, then rename into
-  place. The "cache hit" branch must never observe a partially-written file
-  while a concurrent call is mid-write.
-
-### Image processing (path-in, path-out)
-
-| Method                                  | Args             | Returns                   | Platforms |
-| --------------------------------------- | ---------------- | ------------------------- | --------- |
-| `resizeImage(srcPath, maxDim, quality)` | string, int, int | `{ path, width, height }` | both      |
-| `writeTestImage(width, height)`         | ints             | `{ path, width, height }` | both      |
-
-`resizeImage` re-encodes as JPEG at `quality` (1-100) so the largest side is at
-most `maxDim` px. Implementations MUST:
-
-- Honor EXIF `Orientation` — the output pixels are in display orientation
-  (front-camera selfies must not render rotated). On Android this means
-  reading `ExifInterface.TAG_ORIENTATION` and baking the rotation/flip into
-  the bitmap matrix; on iOS, normalize via `UIImage.imageOrientation` before
-  re-encoding.
-- Keep peak memory bounded for multi-megapixel sources (Android: `inSampleSize`
-  two-pass decode; iOS: `ImageIO` with `kCGImageSourceThumbnailMaxPixelSize`).
-- Reject `maxDim <= 0`. Clamp `quality` to `1..100`.
-- Surface OOM as a promise rejection, not a hang.
-
-`writeTestImage` is used by the emulator/no-camera fallback in `CameraScreen`.
-Reject zero or pathologically-large dimensions.
-
-The source file is untouched in both cases.
-
-### Push notifications
-
-| Method                     | Args   | Returns             | Platforms                      |
-| -------------------------- | ------ | ------------------- | ------------------------------ |
-| `requestPushPermission()`  | —      | `boolean` (granted) | both; token event Android only |
-| `registerPushToken(token)` | string | `void`              | both                           |
-
-An implementation of `requestPushPermission` is complete only when it can do
-all of the following:
-
-1. Trigger the platform-native permission UI if not already decided.
-2. Fetch the platform push token (FCM on Android, APNs/FCM-via-APNs on iOS).
-3. Deliver the token via a [`pushTokenReceived`](#pushtokenreceived) event.
-
-Android implements all three steps. iOS currently implements permission and
-accepts a caller-supplied token through `registerPushToken`, but token
-acquisition and `pushTokenReceived` delivery are not wired.
-
-Both implementations resolve `true` only on an actual OS grant. Android's
-permission request does not fetch a token after denial, but Firebase
-`onNewToken` can still emit independently of that flow; JS currently registers
-every token event. Neither bridge deletes the server device or token on logout.
-iOS must use the same event flow once token forwarding exists.
-
-### Deep linking
-
-| Method              | Args | Returns                      | Platforms |
-| ------------------- | ---- | ---------------------------- | --------- |
-| `getLaunchIntent()` | —    | `{ screen: string } \| null` | both      |
-
-`getLaunchIntent` returns the cold-start deep-link target and consumes it
-(repeat calls return null). Called once by JS on app mount. Warm-start
-deep-links (app already running, notification tapped) arrive via the
-[`launchedFrom`](#launchedfrom) event instead — the bridge isn't built yet
-at cold start so the pull API is the only way to learn about that case.
-
-The current schema is a single `screen` string. Platform status:
-
-- Android: read intent extras (`intent.getStringExtra("screen")`) in
-  the host activity, hook `onNewIntent` for warm starts.
-- iOS: the method and event surface exist, but notification callbacks are not
-  wired; `getLaunchIntent` returns null.
+`getLaunchIntent` returns the cold-start deep-link target once (later calls
+return null). JS calls it on mount, because the bridge does not exist yet when
+a cold start is handled. Warm starts arrive as [`launchedFrom`](#launchedfrom).
 
 ### Misc
 
-| Method                  | Args   | Returns    | Platforms               |
-| ----------------------- | ------ | ---------- | ----------------------- |
-| `getDebugLog()`         | —      | `string[]` | both                    |
-| `prewarmAudioSession()` | —      | `void`     | both (no-op on Android) |
-| `deleteFile(path)`      | string | `void`     | both                    |
-| `setClipboard(text)`    | string | `void`     | both                    |
+| Method                   | Args   | Returns    | Platforms                          |
+| ------------------------ | ------ | ---------- | ---------------------------------- |
+| `getDebugLog()`          | —      | `string[]` | both                               |
+| `prewarmAudioSession()`  | —      | `void`     | both; no-op on Android             |
+| `deleteFile(path)`       | string | `void`     | both                               |
+| `setClipboard(text)`     | string | `void`     | both                               |
+| `addListener(eventName)` | string | —          | Android; iOS via `RCTEventEmitter` |
+| `removeListeners(count)` | number | —          | Android; iOS via `RCTEventEmitter` |
 
-`prewarmAudioSession` warms the audio HAL so video recording starts instantly;
-cold `AVAudioSession` activation on iOS costs ~1.4s. Idempotent, no-op on
-Android.
-
-`deleteFile` is best-effort; missing-file failures should resolve, not reject.
-
-### RN plumbing
-
-| Method                   | Notes                                         |
-| ------------------------ | --------------------------------------------- |
-| `addListener(eventName)` | Required by `NativeEventEmitter`. No-op stub. |
-| `removeListeners(count)` | Required by `NativeEventEmitter`. No-op stub. |
+`prewarmAudioSession` activates the iOS audio session so recording starts
+without a ~1.4 s delay; it is idempotent. `deleteFile`
+is best-effort and resolves for a missing file. `addListener` and
+`removeListeners` are the no-op stubs `NativeEventEmitter` requires.
 
 ## Events
 
-The bridge emits a single named stream — `ObscuraEvent` — whose payloads are
-discriminated by `type`. The TS union in
-[`src/native/ObscuraModule.ts`](../src/native/ObscuraModule.ts) is the
-authoritative shape; any new event type added there MUST be emitted from both
-native implementations, or it will silently never fire. `OBSCURA_EVENT_TYPES`
-in that file is the canonical name list and mirrors the `BridgeEvent` enum in
-`ObscuraBridgeModule.kt`.
+One stream, `ObscuraEvent`. `OBSCURA_EVENT_TYPES` in `ObscuraModule.ts` is the
+name list and mirrors the `BridgeEvent` enums in both bridges. These nine types
+are the whole set.
 
-The nine types below are the whole set.
+| Event                                             | Fields                                     | Emitted when                                                           | JS reaction                                                                            |
+| ------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| <a id="connectionchanged"></a>`connectionChanged` | `state: ConnectionState`                   | the WebSocket state changes                                            | on `connected`, drain the inbox and flush the outbox                                   |
+| <a id="authstatechanged"></a>`authStateChanged`   | `state: AuthState`                         | login, logout, pending-approval transitions                            | `loggedOut` resets the session; `authenticated` loads it and runs the cold-start drain |
+| <a id="authfailed"></a>`authFailed`               | `reason: string`                           | token refresh exhausted its retries                                    | reset the session                                                                      |
+| <a id="appstatechanged"></a>`appStateChanged`     | `state: 'active' \| 'background'`          | process foreground/background; Android also replays it to a new bridge | on `active`, drain and flush                                                           |
+| <a id="launchedfrom"></a>`launchedFrom`           | `screen: string`                           | a notification tap while running                                       | navigate                                                                               |
+| <a id="friendschanged"></a>`friendsChanged`       | —                                          | the friend graph changes                                               | call `getFriends()`                                                                    |
+| <a id="messagereceived"></a>`messageReceived`     | `model: string`                            | an `APP_ENTRY` row was persisted                                       | drain                                                                                  |
+| <a id="typingchanged"></a>`typingChanged`         | `conversationId: string, typers: string[]` | an observed conversation's typer set changes                           | show `typers` (display names)                                                          |
+| <a id="pushtokenreceived"></a>`pushTokenReceived` | `token: string`                            | a push token is available or rotated (Android only)                    | call `registerPushToken`                                                               |
 
-### `connectionChanged`
+`messageReceived` is a wake-up, not a delivery: it may be dropped, so the app
+also drains on cold start, reconnect and foreground.
 
-`{ type: 'connectionChanged', state: ConnectionState }` — emitted whenever
-the underlying WebSocket connection state transitions. JS drains the inbox and
-flushes the outbox on `'connected'`: reconnect is when the server redelivers
-anything it did not see acked.
+## Naming and shape rules
 
-### `authStateChanged`
-
-`{ type: 'authStateChanged', state: AuthState }` — emitted on login,
-logout, and pending-approval transitions. JS treats `'loggedOut'` as
-"session is gone, route to AuthScreen", and `'authenticated'` as
-"session is live" — which is what runs the cold-start drain after a device link
-is approved.
-
-### `authFailed`
-
-`{ type: 'authFailed', reason: string }` — emitted when the kit's token
-refresh has exhausted its retry budget. JS treats this as "session is gone,
-route to AuthScreen."
-
-### `appStateChanged`
-
-`{ type: 'appStateChanged', state: 'active' | 'background' }` — emitted on
-process-wide foreground/background transitions. Replayed once
-to a freshly-bound bridge so JS sees the current state without waiting for
-the next transition. JS drains on `'active'` to process work queued while it
-was suspended. iOS native background wake handling is not implemented yet.
-
-### `launchedFrom`
-
-`{ type: 'launchedFrom', screen: string }` — emitted when a warm-start
-deep-link arrives (app already running, notification tapped). For cold
-starts use [`getLaunchIntent`](#deep-linking) instead.
-
-### `friendsChanged`
-
-`{ type: 'friendsChanged' }` — a wake-up emitted whenever the friend graph changes. JS calls
-`getFriends()` for the canonical snapshot.
-
-### `messageReceived`
-
-`{ type: 'messageReceived', model: string }` — emitted after an inbox row for
-a remote `APP_ENTRY` has been **persisted**. It is a wake-up, not a delivery:
-the data is in the inbox, and nothing reaches the entry store until the app
-drains it there. Payload is intentionally minimal. **Do not** synthesize a fake
-entry id.
-
-This emit MAY be dropped under backpressure (`NATIVE_CONTRACT.md` §0.9 rule 4) — the row is the
-delivery path. That is exactly why the app also drains on cold start,
-reconnect and foreground.
-
-### `typingChanged`
-
-`{ type: 'typingChanged', conversationId: string, typers: string[] }` —
-emitted while an `observeTyping(conversationId)` is active. `typers` is the
-current set of remote display names that are typing.
-
-### `pushTokenReceived`
-
-`{ type: 'pushTokenReceived', token: string }` — emitted when a fresh push
-token is available (after `requestPushPermission`, on cold start with a
-cached token, or on rotation). JS calls `registerPushToken` in response.
-Android emits this event. iOS token delivery is not wired.
-
-## Naming / shape rules
-
-- `type` is the discriminator, always a kebab-free camelCase string.
-- Event fields are flat scalars or simple arrays. No nested objects unless truly necessary.
-- Method args are scalars (`string`/`number`/`boolean`) or JSON strings for
-  free-form objects (`entryPut(…, dataJson, …)`). This keeps the marshalling
-  story identical on both platforms — and it is what keeps nested objects and
-  arrays intact, since neither bridge parses them.
+- `type` is a camelCase string.
+- Event fields are flat scalars or arrays of scalars.
+- Method arguments are scalars, arrays of scalars, or JSON strings for
+  free-form objects (`entryPut(..., dataJson, ...)`), so neither bridge parses
+  nested data.
 
 ## Adding to the contract
 
-1. Update [`ObscuraModule.ts`](../src/native/ObscuraModule.ts) — add the
-   method/event with full types. For an event, add it to
-   `OBSCURA_EVENT_TYPES` too; the `_AssertEventTypesMatch` check makes any
-   drift between the list and the union a compile error.
-2. Implement in `ObscuraBridgeModule.kt` (Android).
-3. Implement in `ObscuraBridge.swift` **and declare it in `ObscuraBridge.m`**
-   (iOS) — `RCT_EXTERN_MODULE` needs both, and a missing `.m` line is a method
-   that compiles and is invisible at runtime.
+1. Add the method or event to [`ObscuraModule.ts`](../src/native/ObscuraModule.ts).
+   For an event also add it to `OBSCURA_EVENT_TYPES`; `_AssertEventTypesMatch`
+   makes drift a compile error.
+2. Implement it in `ObscuraBridgeModule.kt`.
+3. Implement it in `ObscuraBridge.swift` **and declare it in `ObscuraBridge.m`**;
+   without the `.m` line it compiles but is invisible at runtime.
 4. Add a row here.
-5. Mirror it in `src/native/__fixtures__/FakeObscuraBridge.ts`, the in-memory
-   double the tests run against. It models the **bridge contract**, not the
-   kit's internals — if a test needs it to grow a behaviour, check first that
-   the behaviour is part of this document.
-6. If it's a new event, verify both natives use the single `emit(type, build)`
-   helper (Android) / equivalent (iOS) so payload shape doesn't drift.
+5. Mirror it in `src/native/__fixtures__/FakeObscuraBridge.ts`, which models
+   this contract, not kit internals.
+6. Emit events through each bridge's single `emit` helper.
+
+[kit]: https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md
+[kit-identity]: https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md#envelope-identity
+[kit-login]: https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md#login
+[kit-inbox]: https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md#inbox
+[kit-entry-store]: https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md#entry-store
+[kit-send]: https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md#send
+[kit-attachments]: https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md#attachments

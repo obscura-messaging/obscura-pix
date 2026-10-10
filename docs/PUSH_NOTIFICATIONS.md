@@ -1,8 +1,7 @@
 # Notification privacy and transport contract
 
-This document defines the cross-platform constraints for push transport and
-local notification content. Android implements them; iOS notification delivery
-is not wired.
+Cross-platform rules for push transport and local notification content. Android
+implements them; iOS status is in [`IOS_PARITY.md`](IOS_PARITY.md#push-delivery).
 
 ## Privacy invariants
 
@@ -38,10 +37,8 @@ backups. They apply even when richer previews would be convenient.
 | Native app     | Receive the wake, restore the kit session, drain messages, and post generic local copy when backgrounded.           |
 | TypeScript app | Request permission, register refreshed tokens, and interpret committed inbox rows for in-app state.                 |
 
-`processPendingMessages(timeout)` returns one opaque total of successfully
-processed envelopes. It does not consume the app event queue and its result is
-not notification content. Both kits also return zero when their bounded
-connection retries fail, so zero is not proof that the server queue is empty.
+The kit's wake drain is `processPendingMessages(timeout)` ([Push drain and
+events](https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md#push-drain-and-events)). Its count is not notification content.
 
 ## Server API
 
@@ -81,30 +78,19 @@ The TTL is configurable with `OBSCURA_FCM_TTL_SECS`.
 
 The server and app must use the same Firebase project.
 
-## Platform status
-
-### Android
+## Android
 
 `ObscuraSession` is the process-scoped kit owner and sole
 `incomingMessages` consumer. `ObscuraMessagingService` forwards silent wakes to
 that owner; `NotificationHelper` is the only local-notification builder. The
 session posts notifications only while the app is backgrounded.
 
-### iOS
-
-The Swift bridge exists, but Firebase Messaging/APNs token forwarding, silent
-wake handling, background draining, local notification posting, push
-capabilities, and real-device verification remain unimplemented. The current
-background payload does not launch an NSE. Keep notification policy in the
-native app; the Swift kit exposes only the opaque drain API.
-
 ## Token lifecycle
 
 Android's explicit permission flow fetches a token only after a grant. Firebase
 `onNewToken`, however, forwards rotations without checking notification
 permission, and JS registers every received token. Logout clears local session
-state but does not delete the server device or its token. iOS token forwarding
-is not implemented.
+state but does not delete the server device or its token.
 
 ## Release verification
 

@@ -13,10 +13,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * pix as the viewer advances, and (in the viewer) disables backward tap-nav so
  * a consumed pix can't be re-viewed.
  *
- * `sender` is passed in rather than read off `entries[0].data.senderUsername`, which is a name the
- * peer who sent the pix chose (NATIVE_CONTRACT §0.5). Both call sites already hold the `Friend` whose
- * conversation they are showing — an authenticated identity out of the kit's friend graph — so the
- * name comes from there.
+ * `sender` comes from the friend graph, never from the payload, whose names the peer chooses.
  */
 export function openPixViewer(nav: Nav, sender: Friend, entries: Entry[]) {
   if (entries.length === 0) return;
