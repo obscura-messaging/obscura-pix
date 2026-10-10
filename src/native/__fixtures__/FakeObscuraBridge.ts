@@ -16,7 +16,7 @@
  * (the app decides who wins), and `sendEntry` produces no local row — the sender writes its own copy.
  */
 
-import type { Friend, InboxRow, StoredEntry } from '../ObscuraModule';
+import type { Friend, InboxRow, LoginScenario, StoredEntry } from '../ObscuraModule';
 
 type FakeInboxRow = InboxRow & { envelopeId: string };
 
@@ -39,6 +39,7 @@ export class FakeObscuraBridge {
   private listeners = new Set<(event: any) => void>();
   private debugLog: string[] = [];
   private pushToken: string | null = null;
+  private loginScenario: LoginScenario = 'existingDevice';
 
   /**
    * Monotonic clock. Real `Date.now()` has millisecond resolution, so two writes in the same tick
@@ -238,6 +239,11 @@ export class FakeObscuraBridge {
     this.__emit({ type: 'authStateChanged', state });
   }
 
+  /** What the next `login` calls resolve to. Only `existingDevice` authenticates, as in the kits. */
+  __setLoginScenario(scenario: LoginScenario): void {
+    this.loginScenario = scenario;
+  }
+
   /** Flip connection state and emit. */
   __setConnectionState(state: 'disconnected' | 'connecting' | 'reconnecting' | 'connected'): void {
     this.connectionState = state;
@@ -265,6 +271,7 @@ export class FakeObscuraBridge {
     this.failures.clear();
     this.__calls.length = 0;
     this.pushToken = null;
+    this.loginScenario = 'existingDevice';
     this.userId = 'user_self';
     this.username = 'self';
     this.deviceId = 'device_self';
@@ -322,12 +329,14 @@ export class FakeObscuraBridge {
     this.__setAuthState('authenticated');
   }
 
-  async login(username: string, _password: string): Promise<string> {
+  async login(username: string, _password: string): Promise<LoginScenario> {
     this.record('login');
     this.checkFailure('login');
-    this.username = username;
-    this.__setAuthState('authenticated');
-    return 'existingDevice';
+    if (this.loginScenario === 'existingDevice') {
+      this.username = username;
+      this.__setAuthState('authenticated');
+    }
+    return this.loginScenario;
   }
 
   async loginAndProvision(username: string, _password: string): Promise<void> {
@@ -346,6 +355,16 @@ export class FakeObscuraBridge {
   async logout(): Promise<void> {
     this.record('logout');
     this.checkFailure('logout');
+    this.clearLocalState();
+  }
+
+  async wipeDevice(): Promise<void> {
+    this.record('wipeDevice');
+    this.checkFailure('wipeDevice');
+    this.clearLocalState();
+  }
+
+  private clearLocalState(): void {
     this.inbox.length = 0;
     this.nextInboxId = 1;
     this.storedEntries.clear();
