@@ -163,7 +163,6 @@ extension ObscuraBridge {
                 case .newDevice:          mapped = "newDevice"
                 case .deviceMismatch:     mapped = "deviceMismatch"
                 case .invalidCredentials: mapped = "invalidCredentials"
-                case .userNotFound:       mapped = "userNotFound"
                 }
                 if scenario == .existingDevice { ObscuraSession.shared.saveSession() }
                 resolve(mapped)
@@ -212,6 +211,21 @@ extension ObscuraBridge {
             catch { ObscuraSession.shared.logger.log("logout: \(error)") }
             ObscuraSession.shared.clearSession()
             resolve(nil)
+        }
+    }
+
+    @objc(wipeDevice:rejecter:)
+    func wipeDevice(_ resolve: @escaping RCTPromiseResolveBlock,
+                    rejecter reject: @escaping RCTPromiseRejectBlock) {
+        Task {
+            do {
+                try await ObscuraSession.shared.client.wipeDevice()
+                // The kit's wipeDevice() leaves the Keychain session; a stale one would restore the wiped device.
+                ObscuraSession.shared.clearSession()
+                resolve(nil)
+            } catch {
+                rejectKit(reject, "WIPE_ERROR", error)
+            }
         }
     }
 

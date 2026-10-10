@@ -6,6 +6,7 @@ interface NativeObscuraBridge {
   loginAndProvision(username: string, password: string): Promise<void>;
   connect(): Promise<void>;
   logout(): Promise<void>;
+  wipeDevice(): Promise<void>;
   getConnectionState(): Promise<ConnectionState>;
   getAuthState(): Promise<AuthState>;
   getUserId(): Promise<string | null>;
@@ -113,8 +114,7 @@ export type LoginScenario =
   | 'existingDevice'
   | 'newDevice'
   | 'deviceMismatch'
-  | 'invalidCredentials'
-  | 'userNotFound';
+  | 'invalidCredentials';
 
 /**
  * Stable error codes a rejected promise may carry in its `code`, mirroring
@@ -149,6 +149,7 @@ export const Obscura = {
 
   connect: (): Promise<void> => Bridge.connect(),
   logout: (): Promise<void> => Bridge.logout(),
+  wipeDevice: (): Promise<void> => Bridge.wipeDevice(),
 
   // State
   getConnectionState: (): Promise<ConnectionState> => Bridge.getConnectionState(),

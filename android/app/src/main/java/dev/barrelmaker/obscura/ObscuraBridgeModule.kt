@@ -226,7 +226,6 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
                     LoginScenario.NEW_DEVICE -> "newDevice"
                     LoginScenario.DEVICE_MISMATCH -> "deviceMismatch"
                     LoginScenario.INVALID_CREDENTIALS -> "invalidCredentials"
-                    LoginScenario.USER_NOT_FOUND -> "userNotFound"
                 }
                 if (result == LoginScenario.EXISTING_DEVICE) c.persistSession()
                 promise.resolve(scenario)
@@ -280,6 +279,21 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
                 promise.resolve(null)
             } catch (e: Exception) {
                 promise.rejectKit("LOGOUT_ERROR", e)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun wipeDevice(promise: Promise) {
+        scope.launch {
+            try {
+                requireClient().wipeDevice()
+                // Kit's wipeDevice() leaves SessionStorage alone; a stale blob would restore the wiped device.
+                ObscuraSession.clearSession()
+                ObscuraSession.destroyClient()
+                promise.resolve(null)
+            } catch (e: Exception) {
+                promise.rejectKit("WIPE_ERROR", e)
             }
         }
     }

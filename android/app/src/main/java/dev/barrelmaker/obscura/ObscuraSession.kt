@@ -156,8 +156,8 @@ object ObscuraSession {
     //
     // Auth-session persistence (token/refresh/schema) is kit-owned via the
     // injected [sessionStorage]; this section only owns the client instance and
-    // its per-user SQLite DB. There is no app-side save/clear — persist happens
-    // in the kit (connect + token rotation), and logout() clears sessionStorage.
+    // its per-user SQLite DB. Persist happens in the kit (connect + token
+    // rotation) and logout() clears sessionStorage; wipeDevice() does not.
 
     private val sessionStorage by lazy { SharedPreferencesSessionStorage(prefs) }
 
@@ -216,6 +216,8 @@ object ObscuraSession {
                 it is SQLiteDatabaseCorruptException ||
                 it.message?.contains("file is not a database") == true
         }
+
+    fun clearSession() = sessionStorage.clear()
 
     /** Build a fresh client for a username (register / login entry point). */
     fun createClient(username: String): ObscuraClient = buildClient(username)

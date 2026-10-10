@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { SafeAreaView, View, Text, TextInput, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { Obscura } from '../native/ObscuraModule';
 import { useSession } from '../state/store';
+import { logIn } from '../state/login';
 import { KeyboardScreen } from '../components/KeyboardScreen';
 import { s, colors } from '../styles';
 
@@ -25,21 +26,7 @@ export function AuthScreen() {
     if (!username || password.length < 12) { setStatus('Password must be 12+ chars'); return; }
     setStatus('Logging in...');
     try {
-      const scenario = await Obscura.login(username, password);
-      switch (scenario) {
-        case 'existingDevice':
-          await Obscura.connect();
-          setAuthed(true);
-          break;
-        case 'newDevice':
-          await Obscura.loginAndProvision(username, password);
-          await Obscura.connect();
-          setAuthed(true);
-          break;
-        case 'invalidCredentials': setStatus('Wrong password'); break;
-        case 'userNotFound': setStatus('User not found'); break;
-        default: setStatus(`Login: ${scenario}`);
-      }
+      if (!(await logIn(username, password))) setStatus('Wrong username or password');
     } catch (e: any) { setStatus(e.message || 'Login failed'); }
   };
 

@@ -40,13 +40,15 @@ All methods return a `Promise`.
 | `loginAndProvision(username, password)` | strings | `void`            | both      |
 | `connect()`                             | —       | `void`            | both      |
 | `logout()`                              | —       | `void`            | both      |
+| `wipeDevice()`                          | —       | `void`            | both      |
 | `getConnectionState()`                  | —       | `ConnectionState` | both      |
 | `getAuthState()`                        | —       | `AuthState`       | both      |
 | `getUserId()`                           | —       | `string \| null`  | both      |
 | `getUsername()`                         | —       | `string \| null`  | both      |
 | `getDeviceId()`                         | —       | `string \| null`  | both      |
 
-`LoginScenario` outcomes are defined in [Login][kit-login].
+`LoginScenario` outcomes are defined in [Login][kit-login]. `wipeDevice` erases
+this install's identity, sessions, friends, entries and inbox, and logs out.
 `ConnectionState`: `disconnected` `connecting` `reconnecting` `connected`.
 `AuthState`: `loggedOut` `authenticated` `pendingApproval`. The drain stores
 nothing until `getUserId` returns a value, since it cannot authorize without it.
