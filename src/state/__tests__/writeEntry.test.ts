@@ -5,9 +5,7 @@ import { Obscura } from '../../native/ObscuraModule';
 import { getFakeBridge } from '../../native/__fixtures__/reactNativeMock';
 
 /**
- * The write path (`obscura-native/docs/KIT_API.md` §5, §8.1).
- *
- * Tests application-owned id generation, storage, audience resolution, and fan-out.
+ * The write path. Tests application-owned id generation, storage, audience resolution, and fan-out.
  */
 
 const bridge = getFakeBridge();
@@ -38,9 +36,7 @@ describe('storing and sending', () => {
     const stored = await Obscura.entryAll('directMessage');
     expect(stored).toHaveLength(1);
     expect(stored[0].id).toBe(id);
-    // `_authorUserId` is stamped by `writeEntry`, not supplied by the caller: this device authored
-    // the write, so this user is the author (NATIVE_CONTRACT §0.5). Every screen reads it instead of the
-    // payload-supplied identity.
+    // `_authorUserId` is stamped by `writeEntry`, not supplied by the caller.
     expect(JSON.parse(stored[0].data))
       .toEqual({ conversationId: convId, content: 'hi', _authorUserId: SELF });
 
@@ -49,11 +45,7 @@ describe('storing and sending', () => {
     expect(bridge.__sent[0].modelKey).toBe('directMessage');
   });
 
-  /**
-   * **§5 property 2 in practice.** `send` produces no inbox row for the sender, so this is the only
-   * place an outgoing entry is stored. If the local write were dropped, the sender would simply not
-   * have their own message — and no drain would ever supply it.
-   */
+  /** `send` produces no inbox row for the sender, so the local write is the only copy. */
   it('is the only thing that stores the sender copy — nothing loops back', async () => {
     await writeEntry(args('story', { content: 'mine' }));
 

@@ -109,8 +109,8 @@ describe('the entry store', () => {
   });
 
   /**
-   * `entryPut` is a **blind** upsert by contract (`KIT_API.md` §8.1) — the app decides who wins, so
-   * an older write replaces a newer one. A double that merged here would hide an app that forgot to.
+   * `entryPut` is a blind upsert: an older write replaces a newer one. A double that merged here
+   * would hide an app that forgot to.
    */
   it('is a blind upsert — an older write overwrites a newer one', async () => {
     await Obscura.entryPut('pix', 'p', JSON.stringify({ v: 'new' }), 9_000, 'd');

@@ -11,25 +11,25 @@ What's built, what's next.
 - [x] Stories (post, feed) — **but they do not expire**, see below
 - [x] Profiles (display name, bio, synced to friends)
 - [x] Encrypted attachments (upload, download, AES-GCM)
-- [x] Device linking (QR/code approval flow)
 - [x] Auto-reconnect (ping keepalive, exponential backoff)
-- [x] Session persistence (kit-owned, survives app restart)
+- [x] Session persistence (survives app restart)
 - [x] Debug log (in-app, Profile tab)
 - [x] **Camera + send photo** — vision-camera + photo preview + recipient picker
 - [x] **Ephemeral pix viewing** — view-once with display-duration timer + opened/delivered status
 - [x] **Android push notifications** — FCM silent wakes, generic local notifications, and a
-      broad chat-list destination on tap. iOS push remains in Phase 6.
+      broad chat-list destination on tap
 - [x] **React Navigation** — native-stack + bottom tabs, real back stack
 - [x] **Zustand state** — single store + useModelEntries hook, no prop-drilling
-- [x] **The domain moves out of the kits** — merge, audience resolution and the inbox drain exist
-      once, here, in TypeScript (`src/domain/`), with tests and a CI job
+- [x] **App-owned domain** — merge, audience resolution and the inbox drain in TypeScript
+      (`src/domain/`)
 
 ## Current gaps
 
 - [ ] **24-hour story expiry.** Nothing expires on either platform.
-- [ ] **Repeatable physical iOS ↔ Android release gate.** Foreground interop has
-      been demonstrated manually. Push and release signing are not automated,
-      and a new iOS device cannot receive link approval.
+- [ ] **Device linking UI.** The kits and both bridges support linking
+      (`generateLinkCode`, `validateAndApproveLink`), but the app has no screen
+      for it. A new iOS device cannot receive link approval.
+- [ ] **iOS push and release gate.** See [`docs/IOS_PARITY.md`](docs/IOS_PARITY.md).
 
 ## Phase 2: Ephemeral viewing polish
 
@@ -57,12 +57,6 @@ What's built, what's next.
 - [ ] Fire emoji + streak count display
 - [ ] Streak expiry warning (approaching 24h without exchange)
 - [ ] Streak reminders via push notification
-
-## Phase 6: iOS
-
-Foreground interoperability and simulator CI are complete. Remaining work is
-APNs/background delivery, receiving link approval on a new iOS device, and
-release signing. See [`docs/IOS_PARITY.md`](docs/IOS_PARITY.md).
 
 ## Not Planned
 

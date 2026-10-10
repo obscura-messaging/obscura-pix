@@ -838,7 +838,7 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
         }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
-    // Kit data surface (obscura-native/docs/KIT_API.md §3, §5, §8.1).
+    // Kit data surface.
     //
     // Drain the inbox, store application entries, and send application writes.
     // Payload data crosses as an opaque JSON string and is never re-encoded.
@@ -870,11 +870,7 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    /**
-     * Data loss the app chose deliberately (§3.3 rule 5) — the server's copy is already gone, so
-     * nothing else holds these bytes. `reason` is required, not optional, because the kit logs it as
-     * a security-relevant event and "" would make that log useless.
-     */
+    /** Permanent data loss; the kit logs `reason` as a security event, so it is required. */
     @ReactMethod
     fun inboxDiscard(ids: ReadableArray, reason: String, promise: Promise) {
         scope.launch {
@@ -927,7 +923,7 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    /** Securely remove one local entry (KIT_API §8.1). The app decides when. */
+    /** Securely remove one local entry. The app decides when. */
     @ReactMethod
     fun entryErase(model: String, id: String, promise: Promise) {
         scope.launch {
@@ -961,7 +957,7 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    /** The caller names recipients (DOMAIN_CONTRACT). The kit resolves no entry audience. */
+    /** The caller names recipients; the kit resolves no audience. */
     @ReactMethod
     fun sendEntry(
         recipientUserIds: ReadableArray,
@@ -988,13 +984,8 @@ class ObscuraBridgeModule(reactContext: ReactApplicationContext) :
     }
 
     /**
-     * `payload` crosses as a UTF-8 STRING, and that is only meaningful for kinds the app understands.
-     *
-     * For an APP_ENTRY it is the app's own JSON, byte-identical to what the sender wrote. For an
-     * unknown arm (§4.1) it is arbitrary protobuf bytes and this string is lossy — which is
-     * acceptable precisely because §4.1 requires the app to `discard` a row whose `kind` it does not
-     * recognise WITHOUT reading the payload. A row the app must not read cannot be corrupted by an
-     * encoding it never applies.
+     * `payload` crosses as a UTF-8 string. For an unknown `kind` the decoding is lossy, which is safe
+     * because the app discards such rows without reading the payload.
      */
     private fun inboxRowToMap(r: dev.barrelmaker.obscura.kit.stores.InboxRecord): WritableMap =
         Arguments.createMap().apply {

@@ -70,11 +70,10 @@ RCT_EXTERN_METHOD(requestPushPermission:(RCTPromiseResolveBlock)resolve rejecter
 RCT_EXTERN_METHOD(registerPushToken:(NSString *)token
                   resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 
-// ── Kit data surface (obscura-native/docs/KIT_API.md §3, §5, §8.1) ───────
+// ── Kit data surface ─────────────────────────────────────────────────────
 //
-// These MUST mirror the @objc selectors in ObscuraBridge.swift exactly. A Swift @objc method with
-// no RCT_EXTERN_METHOD here is invisible to React Native — it compiles, ships, and the call
-// silently does nothing at runtime.
+// These MUST mirror the @objc selectors in ObscuraBridge.swift. A Swift @objc method with no
+// RCT_EXTERN_METHOD here compiles but is invisible to React Native.
 RCT_EXTERN_METHOD(inboxPeek:(nonnull NSNumber *)limit
                   resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(inboxConsume:(NSArray *)ids

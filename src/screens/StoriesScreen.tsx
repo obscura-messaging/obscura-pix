@@ -269,11 +269,8 @@ export function StoriesRow() {
   // convention). Across groups, "me" is pinned to position 0; the rest are
   // sorted by their most recent story so freshly-posting friends bubble up.
   //
-  // The grouping key is the userId the drain took off the envelope, never `authorUsername`. Reading
-  // the name out of the payload meant a stranger who sent `{ authorUsername: "alice" }` got a story
-  // in my feed under Alice's circle — delivery does not require friendship (KIT_API §4.1), so
-  // nothing stopped them. A story whose author resolves to no authenticated name is dropped from
-  // the row rather than shown as "unknown": it is still content a stranger put there.
+  // Group by the authenticated author userId, never a payload name. A story whose author is not in
+  // the friend graph is dropped rather than shown as "unknown".
   const groups: StoryGroup[] = useMemo(() => {
     const identity = { myUserId, myUsername, friends };
     const map = new Map<string, Entry[]>();

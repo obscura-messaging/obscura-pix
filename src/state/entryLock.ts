@@ -3,9 +3,7 @@
  *
  * ## Why this exists
  *
- * Both write paths call `Obscura.entryPut`, which is a **blind** upsert by contract (`KIT_API.md`
- * §8.1) — the app decides who wins, so the store applies whatever it is handed. That is correct, and
- * it makes overlapping writers dangerous in a specific way:
+ * Both write paths call `Obscura.entryPut`, a blind upsert, so overlapping writers are dangerous:
  *
  * ```
  * drain:  read state ──────────────────────► merge ──► put(peer's entry)

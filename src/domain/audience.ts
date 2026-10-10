@@ -102,21 +102,9 @@ export function resolveAudience(
           `'${raw}' does not name this user, so it is not a conversation this device can address`,
         );
       }
-      // GUARD, and the one that was missing: **the participants are intersected with the accepted
-      // friend graph.** A conversation id is a payload field, so without this the app sends to
-      // whatever userId a peer wrote into it.
-      //
-      // That is reachable, not theoretical. `StoriesScreen` writes a viewed-receipt back with
-      // `{ ...story.data }`, and `story.data.conversationId` came from a peer's AppEntry. Any
-      // authenticated user can deliver to any device (friendship is not required to send, KIT_API
-      // §4.1), so a stranger could push a `pix` naming `<me>_<userId of their choosing>` and my
-      // device would mail the entry — `mediaRef`, `contentKey`, `nonce`, `caption` — to that userId
-      // when I viewed it. A hostile friend could redirect an entry I already hold by replaying it
-      // with a higher `sentAt`.
-      //
-      // Fails SAFE, matching the `recipient` branch below: an unreachable participant is dropped
-      // rather than raising, so a conversation with someone I have unfriended stops sending instead
-      // of erroring. It cannot widen — the intersection only ever removes.
+      // GUARD: intersect with accepted friends. The conversation id can come from a peer's payload
+      // (a viewed-receipt echoes it back), so without this a stranger could choose who receives my
+      // copy of their entry. Fails safe: a non-friend participant is dropped, not raised.
       const acceptedIds = new Set(accepted.map((f) => f.userId));
       return participants.filter((id) => id !== selfUserId && acceptedIds.has(id));
     }

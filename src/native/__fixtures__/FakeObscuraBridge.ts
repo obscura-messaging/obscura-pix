@@ -11,9 +11,6 @@
  *   - `userId` / `deviceId` are whatever you set, with no authentication of any kind;
  *   - it models the **bridge contract**, not the kit's internals.
  *
- * `inboxPeek` / `inboxConsume` / `inboxDiscard` / `inboxDepth`, `entryPut` / `entryAll`, and
- * `sendEntry` mirror the kit surface (`KIT_API.md` §3, §5, §8.1).
- *
  * The properties that matter are modelled faithfully because the app's correctness depends on them:
  * `inboxPeek` is side-effect free, ids are monotonic and never reused, `entryPut` is a BLIND upsert
  * (the app decides who wins), and `sendEntry` produces no local row — the sender writes its own copy.
@@ -100,7 +97,7 @@ export class FakeObscuraBridge {
   async inboxPeek(limit: number): Promise<InboxRow[]> {
     this.record('inboxPeek');
     this.checkFailure('inboxPeek');
-    // Side-effect free (§3.3 rule 3): peeking twice without consuming returns the same rows. Copies
+    // Side-effect free: peeking twice without consuming returns the same rows. Copies
     // are returned so a test mutating a row cannot corrupt the store and mask a bug.
     return this.inbox.slice(0, limit).map(({ envelopeId: _envelopeId, ...row }) => ({ ...row }));
   }
@@ -171,8 +168,8 @@ export class FakeObscuraBridge {
   ): Promise<void> {
     this.record('sendEntry');
     this.checkFailure('sendEntry');
-    // No local row and no inbox row — §5 property 2. The sender writes its own copy, so a test that
-    // forgets to will see an empty store rather than a silently-correct one.
+    // No local row and no inbox row: the sender writes its own copy, so a test that forgets to sees
+    // an empty store.
     this.__sent.push({ recipientUserIds, modelKey, entryId, sentAt, payloadJson });
   }
 
@@ -189,11 +186,8 @@ export class FakeObscuraBridge {
    *
    * Defaults describe a well-formed APP_ENTRY, so a test only states what it is varying.
    *
-   * **Deduped on `envelopeId`**, because both kits are `UNIQUE(envelope_id)` + `INSERT OR IGNORE`
-   * (KIT_API §3.3 rule 8). Without it a test could build a two-rows-one-envelope state the real kits
-   * cannot produce — and redelivery is guaranteed by persist-then-ack, so that is precisely the
-   * state the dedupe key exists to prevent. A redelivery is still observable: pass the same
-   * `envelopeId` and the second call returns the existing row rather than adding one.
+   * Deduped on `envelopeId`, as in both kits: passing the same `envelopeId` again returns the
+   * existing row rather than adding one.
    */
   __deliverInbox(
     row: Partial<InboxRow> & { payload: string; envelopeId?: string },

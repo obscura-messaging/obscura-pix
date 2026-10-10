@@ -2,27 +2,12 @@
 
 ## Read first
 
+- [`README.md`](README.md#architecture): who owns what.
 - [`docs/DOMAIN_CONTRACT.md`](docs/DOMAIN_CONTRACT.md): application semantics.
 - [`docs/BRIDGE.md`](docs/BRIDGE.md): React Native bridge behavior.
-- [`NATIVE_CONTRACT.md`](https://github.com/obscura-messaging/obscura-native/blob/591a659/docs/NATIVE_CONTRACT.md):
-  native ownership and receive guarantees.
-- [`KIT_API.md`](https://github.com/obscura-messaging/obscura-native/blob/591a659/docs/KIT_API.md):
-  app-facing native API.
-
-## Ownership
-
-- TypeScript owns models, payload parsing, recipients, authorization, merge,
-  expiry, outbox policy, and rendering.
-- ObscuraKit owns auth, friends/devices, Signal, transport, typing,
-  attachments, durable inbox receipt, and opaque entry storage.
-- Platform host code owns OS lifecycle, permissions, files, push,
-  notifications, and bridge marshalling.
+- [`KIT_API.md`](https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md): the kit contract.
 
 Do not move application semantics into native code.
-
-> If a kit reads a value, it must be declared in `client.proto`.
-
-> Sender identity comes from the envelope, never the payload.
 
 ## Application entry points
 
@@ -45,5 +30,3 @@ npm test
 npm run typecheck
 npm run lint
 ```
-
-Rendered UI and physical-device behavior are outside the Jest suite.

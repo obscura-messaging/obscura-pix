@@ -21,35 +21,15 @@ React Native application (`src/`)
 - The Android and iOS host layers own OS lifecycle, permissions, files, push,
   notifications, and React Native marshalling.
 
-The application domain contract is
-[`docs/DOMAIN_CONTRACT.md`](docs/DOMAIN_CONTRACT.md). The native bridge contract
-is [`docs/BRIDGE.md`](docs/BRIDGE.md).
+Contracts: [`docs/DOMAIN_CONTRACT.md`](docs/DOMAIN_CONTRACT.md) (app
+semantics), [`docs/BRIDGE.md`](docs/BRIDGE.md) (React Native bridge), and
+[`KIT_API.md`](https://github.com/obscura-messaging/obscura-native/blob/3a509ddf2576240a4db0d86956300c18aa50a23c/docs/KIT_API.md) (kit).
 
 ## Setup
 
-Start with [`CONTRIBUTING.md`](CONTRIBUTING.md). Platform constraints and
-troubleshooting notes are in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
-
-### iOS device build with a personal team
-
-Without access to the project team, sign with your own team through
-command-line overrides. No tracked files change. The App Group is dropped, and
-the app falls back to its private container.
-
-```bash
-just ios-build   # once, to prepare dependencies
-./obscura-native/swift/scripts/bootstrap-libsignal.sh ios-device
-cd ios && mkdir -p build
-printf '<plist version="1.0"><dict/></plist>' > build/Personal.entitlements
-xcodebuild -workspace Obscura.xcworkspace -scheme Obscura \
-  -destination 'generic/platform=iOS' -configuration Release \
-  -allowProvisioningUpdates \
-  -derivedDataPath build/personal \
-  DEVELOPMENT_TEAM=<TEAM_ID> PRODUCT_BUNDLE_IDENTIFIER=<your.bundle.id> \
-  CODE_SIGN_ENTITLEMENTS=build/Personal.entitlements build
-xcrun devicectl device install app --device <DEVICE_ID> \
-  build/personal/Build/Products/Release-iphoneos/Obscura.app
-```
+Start with [`CONTRIBUTING.md`](CONTRIBUTING.md), which also covers checks and
+updating the native pin. Platform notes are in
+[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ## Project layout
 
@@ -65,15 +45,6 @@ obscura-native/             Pinned native source submodule
 tools/push-sender/          Real Android push test sender
 ```
 
-## Checks
-
-```bash
-just check
-```
-
-The Jest suite covers domain, native facade, and state behavior. It does not
-cover rendered UI or physical-device behavior.
-
 ## Internal builds
 
 After `main` CI passes, an Obscura owner can run **Actions → Release / Internal**
@@ -81,15 +52,3 @@ to send signed builds to Android and iOS testers. This does not publish to
 Google Play or the public App Store. See
 [Android distribution](docs/ANDROID_DISTRIBUTION.md) and
 [iOS distribution](docs/IOS_DISTRIBUTION.md) for signing and tester setup.
-
-## Updating the native pin
-
-```bash
-git -C obscura-native fetch origin
-git -C obscura-native switch --detach <full-commit-sha>
-git -C obscura-native submodule update --init --recursive
-git add obscura-native
-```
-
-Land coordinated native work in `obscura-native` first, then update this
-repository's gitlink.

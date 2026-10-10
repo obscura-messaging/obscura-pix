@@ -2,16 +2,8 @@ import { planDrain, type DrainRow, type ModelRules } from '../drain';
 import type { Entry } from '../merge';
 
 /**
- * The drain plan (`KIT_API.md` §3, §4.1 and `DOMAIN_CONTRACT.md`).
- *
- * Two subjects, and both are about a message the app cannot undo:
- *
- * - **Not losing one.** An inbox row is the only copy — the kit already acked, so the server deleted
- *   its own — which makes "consume" irreversible and makes the difference between `consume`,
- *   `discard` and *neither* worth a test each.
- * - **Not believing one.** Delivery is not authorization: any authenticated user can deliver to any
- *   device (§4.1). So the plan also decides who was entitled to write what, and who an entry is
- *   from — from the envelope, never from the payload.
+ * The drain plan (`docs/DOMAIN_CONTRACT.md`): not losing a row (it is the only copy) and not
+ * believing one (authorization and attribution come from the envelope, never the payload).
  */
 
 const SELF = 'uMe';
@@ -80,12 +72,7 @@ describe('the happy path', () => {
 });
 
 describe('attribution — who an entry is from', () => {
-  /**
-   * **Attack A.** A stranger sends a `story` claiming to be Alice. Before this, `StoriesRow` grouped
-   * on `s.data.authorUsername` and it appeared in the feed under Alice's circle. Now the claim is
-   * simply overwritten with the userId the server stamped on the envelope, which the sender cannot
-   * forge (NATIVE_CONTRACT §0.10).
-   */
+  /** A stranger's `story` claiming to be Alice is attributed to the server-stamped sender. */
   it('overwrites a payload-claimed author with the authenticated sender', () => {
     const r = row({
       modelKey: 'story',
@@ -232,11 +219,7 @@ describe('authorization — who may write what', () => {
 });
 
 describe('rows the app cannot process', () => {
-  /**
-   * §4.1: the kit inboxes an unknown arm rather than destroying it, because declining to ack
-   * composes with the server's oldest-first eviction into a remote wipe. But the app has no more
-   * idea what it is than the kit did — so it says so, out loud, and the row leaves the queue.
-   */
+  /** The kit inboxes unknown arms; the app cannot read them either, so it discards them. */
   it('discards an unknown kind rather than skipping it', () => {
     const r = row({ kind: 'UNKNOWN', modelKey: null, entryId: null });
 
@@ -263,9 +246,8 @@ describe('rows the app cannot process', () => {
   });
 
   /**
-   * `senderDeviceId` is the REPLACE tie-break and must be the session-attributed device (NATIVE_CONTRACT §0.10
-   * rule 4). Without it two devices receiving the same pair of writes in different orders converge
-   * to different states — silently, and invisibly to single-device testing.
+   * `senderDeviceId` is the REPLACE tie-break. Without it two devices receiving the same writes in
+   * different orders converge to different states.
    */
   it('discards a row with no authenticated sender device', () => {
     const r = row({ senderDeviceId: null });
@@ -285,10 +267,8 @@ describe('rows the app cannot process', () => {
   });
 
   /**
-   * **The property the whole design rests on: every row is accounted for.** A row that is neither
-   * consumed nor discarded stays at the head of the queue forever — `inboxDepth()` never reaches
-   * zero and the drain wedges, because §3.4 deferred the `after:` cursor on the explicit condition
-   * that the app never skips.
+   * Every row is consumed or discarded. There is no skip cursor, so a row that is neither stays at
+   * the head of the queue forever.
    */
   it('accounts for every row — nothing is silently skipped', () => {
     const rows = [
@@ -333,9 +313,8 @@ describe('merging within a batch', () => {
   });
 
   /**
-   * A losing write must not be queued. `entryPut` is a BLIND upsert (§8.1) — the app decides who
-   * wins — so writing the loser after the winner would overwrite the winner with it. Consuming it is
-   * still right: the row WAS processed, and the correct outcome was "keep what we have".
+   * A losing write must not be queued: `entryPut` is a blind upsert and would overwrite the winner.
+   * The row is still consumed.
    */
   it('consumes but does not write a row that loses the merge', () => {
     const stored: Entry = {

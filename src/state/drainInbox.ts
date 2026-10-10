@@ -7,21 +7,14 @@ import { readEntries } from './readEntries';
 import { logError } from '../utils/log';
 
 /**
- * Drain the kit's inbox into the app's own store (`obscura-native/docs/KIT_API.md` §3).
- *
- * `drain.ts` decides *what* should happen; this performs it. They are separate because the decision
- * is worth testing without a kit, and because the **order of the effects** is the part that can lose
- * a message — so it lives in one short function where it can be read at a glance:
+ * Drain the kit's inbox into the entry store, applying the plan from `drain.ts`.
  *
  * ```
  * peek → plan → WRITE entries → THEN consume → discard
  * ```
  *
- * Write-before-consume is not a preference. The inbox row is the only copy of the message: the kit
- * already acked, so the server deleted its own. Consuming before the entry is durably stored is a
- * message destroyed with no way to notice. If a write throws, the rows stay in the inbox and the
- * next drain reprocesses them — which is safe precisely because `peek` is side-effect free and
- * `merge` is idempotent.
+ * The inbox row is the only copy of a message, so entries are written before rows are consumed. If
+ * a write throws, the rows stay and the next drain reprocesses them; merge is idempotent.
  */
 
 function toDrainRow(row: InboxRow): DrainRow {
@@ -31,7 +24,7 @@ function toDrainRow(row: InboxRow): DrainRow {
     modelKey: row.modelKey,
     entryId: row.entryId,
     sentAt: row.sentAt,
-    // Server-stamped sender identity (NATIVE_CONTRACT §0.10).
+    // Server-stamped sender identity.
     senderUserId: row.senderUserId,
     senderDeviceId: row.senderDeviceId,
     payload: row.payload,
@@ -113,14 +106,8 @@ async function drainInboxUnlocked(limit: number): Promise<DrainResult> {
   // 2. THEN consume. If step 1 threw, we never get here and the rows are redelivered next drain.
   if (plan.consume.length > 0) await Obscura.inboxConsume(plan.consume);
 
-  // 3. Discard what can never be processed — data loss, chosen out loud, grouped by reason so the
-  //    kit's security log says WHY rather than just how many (§3.3 rule 5).
-  //
-  //    Rule 5 also requires it to be **surfaced**, not merely logged by the kit: "it is data loss,
-  //    chosen deliberately, and must never be the quiet path". Passing the reason across the bridge
-  //    and saying nothing app-side left the app's own log — the one the debug screen shows — silent
-  //    about every discard. `unauthorized-sender` in particular is a security event: it means
-  //    somebody sent this device an entry they were not entitled to write.
+  // 3. Discard what can never be processed, grouped by reason. Also log it app-side so discards show
+  //    in the debug screen; `unauthorized-sender` is a security event.
   const byReason = new Map<string, number[]>();
   for (const { id, reason } of plan.discard) {
     byReason.set(reason, [...(byReason.get(reason) ?? []), id]);

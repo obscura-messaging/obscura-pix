@@ -59,9 +59,8 @@ export function RecipientPicker({ route }: RootStackScreenProps<'RecipientPicker
       const undelivered: string[] = [];
       for (const friend of recipients) {
         try {
-          // No `senderUsername` / `recipientUsername`. The conversation id already names both
-          // parties with authenticated userIds, and `saveEntry` stamps the author — a payload name
-          // was only ever a claim the recipient had no way to check (NATIVE_CONTRACT §0.5).
+          // No username fields: the conversation id names both parties and `saveEntry` stamps the
+          // author.
           await saveEntry('pix', {
             conversationId: conversationId(myUserId, friend.userId),
             mediaRef: attachment.id,

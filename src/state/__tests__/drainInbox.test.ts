@@ -145,11 +145,7 @@ describe('the effect ORDER', () => {
 });
 
 describe('rows the app cannot process', () => {
-  /**
-   * §4.1's rule, and the condition §3.4's deferral of the `after:` cursor rests on: an unprocessable
-   * row must be DISCARDED, not skipped. Skipped, it sits at the head of the queue forever and the
-   * drain wedges — `inboxDepth()` never reaches zero.
-   */
+  /** An unprocessable row is discarded, not skipped; a skipped row would block the queue forever. */
   it('discards an unknown kind and empties the inbox', async () => {
     bridge.__deliverInbox({ kind: 'SOMETHING_NEWER', modelKey: null, entryId: null, payload: 'opaque' });
 
@@ -173,11 +169,7 @@ describe('rows the app cannot process', () => {
     expect(bridge.__discarded.find((d) => d.reason === 'unknown-kind')?.ids).toHaveLength(2);
   });
 
-  /**
-   * §3.3 rule 5: a discard "MUST be logged as a security-relevant event **and surfaced** — it is
-   * data loss, chosen deliberately, and must never be the quiet path". Passing the reason across the
-   * bridge satisfied the first half only; the app's own log said nothing.
-   */
+  /** A discard is data loss, so the app logs it too, not only the kit. */
   it('surfaces the discard app-side, not only to the kit', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     bridge.__deliverInbox({ kind: 'UNKNOWN', modelKey: null, entryId: null, payload: 'x' });
@@ -189,9 +181,8 @@ describe('rows the app cannot process', () => {
   });
 
   /**
-   * The security case: delivery is not authorization. A stranger can send this device anything
-   * (KIT_API §4.1), including a `profile` written to MY id — which is REPLACE, so a higher `sentAt`
-   * took the row over, and `ProfileScreen`'s save then re-broadcast their text as mine.
+   * Delivery is not authorization. A stranger's `profile` written to MY id would win the REPLACE
+   * merge with a higher `sentAt`.
    */
   it('discards an entry the sender was not entitled to write', async () => {
     bridge.__deliverInbox({
@@ -294,11 +285,7 @@ describe('merging against what is already stored', () => {
 });
 
 describe('the inbox dedupes on envelopeId, as both kits do', () => {
-  /**
-   * KIT_API §3.3 rule 8. Persist-then-ack *guarantees* redelivery — the ack is best-effort and its
-   * failure is swallowed — so the same envelope arrives twice as normal behaviour, and
-   * `UNIQUE(envelope_id)` + `INSERT OR IGNORE` is what stops it becoming two rows.
-   */
+  /** Persist-then-ack makes redelivery routine; the envelope id keeps it to one row. */
   it('does not create a second row for a redelivered envelope', async () => {
     const first = deliver({ entryId: 'dm_1' });
     deliver({ envelopeId: first.envelopeId, entryId: 'dm_1' });

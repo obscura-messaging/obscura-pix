@@ -1,33 +1,16 @@
 /**
- * Draining the kit's inbox (`obscura-native/docs/KIT_API.md` §3).
- *
- * The kit stores opaque bytes; the application decides what they mean.
- *
- * ## The contract, and why each step is where it is
+ * Planning an inbox drain (`docs/DOMAIN_CONTRACT.md`, "Drain").
  *
  * ```
- * peek(limit) → for each row: classify → AUTHORIZE → attribute → merge → put → consume | discard
+ * for each row: classify → validate → AUTHORIZE → attribute → merge → write → consume | discard
  * ```
  *
- * - **Authorize before storing.** Delivery is not authorization: any authenticated user can deliver
- *   to any device (KIT_API §4.1), so arrival does not prove that the sender may write a row.
+ * - Authorize before storing: any authenticated user can deliver to any device.
+ * - Consume only what was written. The inbox row is the only copy, so consuming first loses it.
+ * - Discard what can never be processed. There is no skip cursor, so a skipped row would block the
+ *   queue forever.
  *
- * - **`peek` is side-effect free.** Draining twice without consuming returns the same rows. That is
- *   the crash-safety property, not a bug: an app that dies mid-drain reprocesses, and `merge.ts`'s
- *   rules are idempotent so reprocessing converges.
- * - **Consume only what was durably written.** An inbox row is the ONLY copy — the kit already
- *   acked, so the server deleted its own. A row consumed before its entry is stored is a message
- *   destroyed. So this writes first, then consumes, and consumes only the ids it actually wrote.
- * - **A row the app cannot process is `discard`ed, not skipped.** §4.1's rule, and the condition
- *   §3.4's deferral of the `after:` cursor rests on: with no cursor, a row that is skipped sits at
- *   the head of the queue forever, `inboxDepth()` never reaches zero, and the drain wedges. Skipping
- *   is the one behaviour that is never correct here.
- *
- * ## What this file deliberately does not do
- *
- * No network, no bridge, no storage. It takes rows and the current state and returns a **plan**:
- * what to write, what to consume, what to discard. That keeps the decision testable without a kit,
- * and keeps the effects in one place (`inboxDrain.ts`) where their ordering is visible.
+ * Pure: takes rows and current state, returns a plan. `src/state/drainInbox.ts` applies it.
  */
 
 import { parseConversationId } from './conversation';
@@ -86,13 +69,9 @@ export interface ModelRules {
 /**
  * May this authenticated sender write this entry? `null` when yes.
  *
- * **Friendship is deliberately NOT required.** Any authenticated user can deliver to any device
- * (KIT_API §4.1), so a stranger's entry reaches the inbox no matter what — but a `discard` is
- * permanent data loss, and gating it on a friend graph that updates over a *different* message than
- * the entry itself would drop real mail on the accept/first-message race. The screens instead
- * resolve every name through the friend graph, so a stranger's entry is stored and never attributed
- * to anybody. What is checked here is narrower and unconditional: an entry must be consistent with
- * who actually sent it.
+ * Friendship is not required: gating a permanent discard on a friend graph that updates through a
+ * different message would drop real mail on the accept/first-message race. The screens resolve
+ * names through the friend graph, so a stranger's entry is stored but never attributed.
  *
  * `story` has no rule beyond attribution: it carries no id or field that binds it
  * to an author, so the authenticated sender becomes the author.
@@ -157,8 +136,7 @@ export function planDrain(
   const working = new Map<string, Map<string, Entry>>();
 
   for (const row of rows) {
-    // §4.1: an arm the kit did not recognise. The kit preserved it rather than destroying it, and
-    // preserving it was right — but the app has no more idea what it is than the kit did.
+    // Not an app entry; the app cannot read it either.
     if (row.kind !== 'APP_ENTRY') {
       plan.discard.push({ id: row.id, reason: 'unknown-kind' });
       continue;
@@ -170,11 +148,8 @@ export function planDrain(
       continue;
     }
 
-    // APP_ENTRY-derived fields the merge cannot work without. `senderDeviceId` is the REPLACE
-    // tie-break and must be the session-attributed device (NATIVE_CONTRACT §0.10 rule 4) — a row without one cannot
-    // be ordered deterministically, so storing it would make two devices converge differently.
-    // `senderUserId` is the authorization and attribution input: without it there is nothing to
-    // check a claim against and nothing to attribute the entry to.
+    // `senderDeviceId` is the REPLACE tie-break; without it devices could converge differently.
+    // `senderUserId` is the authorization and attribution input.
     if (
       row.entryId === null || row.sentAt === null ||
       row.senderDeviceId === null || row.senderUserId === ''
@@ -242,7 +217,7 @@ export function planDrain(
 
     // Record the write only if the merge actually took this entry. An APPEND duplicate, or a REPLACE
     // that lost on `(sentAt, authorDeviceId)`, changes nothing — writing it anyway would overwrite
-    // the winner with the loser, because `entryPut` is a BLIND upsert by design (§8.1). The row is
+    // the winner with the loser, because `entryPut` is a blind upsert. The row is
     // still consumed: it was processed correctly, and the correct outcome was "keep what we have".
     if (next.get(entry.id) === entry) {
       const writes = plan.writes.get(model) ?? [];
