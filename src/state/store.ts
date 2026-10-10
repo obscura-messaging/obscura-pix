@@ -3,12 +3,15 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import {
   Obscura, onObscuraEvent,
-  type Friend, type ConnectionState, type ModelEntry, type ObscuraEvent,
+  type Friend, type ConnectionState, type ObscuraEvent,
 } from '../native/ObscuraModule';
 import { drainInboxFully } from './drainInbox';
 import { writeEntry, flushOutbox } from './writeEntry';
 import { requestStartupPermissions } from '../application/requestStartupPermissions';
 import { logError } from '../utils/log';
+import type { Entry } from '../domain/merge';
+import type { ModelData, ModelName } from '../models/schema';
+import { readEntries } from './readEntries';
 
 /**
  * Process-wide store for session state and application entry caches.
@@ -40,7 +43,7 @@ interface ObscuraStore {
   // Per-model entries cache. A `undefined` slot means "never loaded";
   // first useModelEntries(model) triggers the fetch + creates the slot,
   // after which bootstrap keeps it fresh on events.
-  entries: Record<string, ModelEntry[] | undefined>;
+  entries: Record<string, Entry[] | undefined>;
 
   // Actions — public
   setAuthed: (v: boolean) => void;
@@ -55,7 +58,7 @@ interface ObscuraStore {
   _setDeviceId: (id: string) => void;
   _setFriendsAndPending: (friends: Friend[], pending: Friend[]) => void;
   _setConnState: (s: ConnectionState) => void;
-  _setEntries: (model: string, entries: ModelEntry[]) => void;
+  _setEntries: (model: string, entries: Entry[]) => void;
 }
 
 export const useStore = create<ObscuraStore>((set) => ({
@@ -128,45 +131,25 @@ export function useSession() {
 }
 
 /**
- * All entries for `model`, auto-loading on first call and auto-refreshing
- * on `messageReceived` (handled centrally in the
- * bootstrap subscription).
- *
- * There is no tombstone filter because the current application and kit APIs have
- * no delete operation.
+ * All entries for `model`, loading on first use; bootstrap keeps them fresh. Every write and every
+ * received entry is validated against the schema, which is what makes the typed `data` sound.
  */
-export function useModelEntries(model: string): ModelEntry[] {
+export function useModelEntries<M extends ModelName>(model: M): Entry<ModelData<M>>[] {
   const entries = useStore((s) => s.entries[model]);
   useEffect(() => {
     if (entries !== undefined) return;
     loadEntries(model);
   }, [model, entries]);
-  return entries ?? [];
+  return (entries ?? []) as unknown as Entry<ModelData<M>>[];
 }
 
-/**
- * Read a model's entries from the kit's entry store and parse them.
- *
- * `data` crosses the bridge as an opaque JSON string — the kit never parses it, which is what keeps
- * nested objects and arrays intact — so the app parses it here, once, on the way in.
- */
 export async function loadEntries(model: string): Promise<void> {
   try {
-    const stored = await Obscura.entryAll(model);
-    const parsed: ModelEntry[] = [];
-    for (const e of stored) {
-      let data: Record<string, unknown>;
-      try {
-        data = JSON.parse(e.data) as Record<string, unknown>;
-      } catch {
-        // A row we cannot read is skipped rather than crashing the screen. It is a bug worth fixing,
-        // not a reason to show the user nothing.
-        logError('entries.parse:' + model, new Error(`entry ${e.id} is not JSON`));
-        continue;
-      }
-      parsed.push({ id: e.id, data, timestamp: e.sentAt, authorDeviceId: e.authorDeviceId });
-    }
-    useStore.getState()._setEntries(model, parsed);
+    const rows = await readEntries(model);
+    useStore.getState()._setEntries(
+      model,
+      rows.map(({ id, sentAt, authorDeviceId, data }) => ({ id, sentAt, authorDeviceId, data })),
+    );
   } catch (e) {
     logError('entries.load:' + model, e);
   }

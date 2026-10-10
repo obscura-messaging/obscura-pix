@@ -10,7 +10,7 @@ import { CloseIcon } from '../components/icons';
 import { Avatar } from '../components/Avatar';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Obscura, type ModelEntry } from '../native/ObscuraModule';
+import { Obscura } from '../native/ObscuraModule';
 import { logError } from '../utils/log';
 import { timeAgo as fmtTimeAgo } from '../utils/format';
 import { useSession, useModelEntries, saveEntry } from '../state/store';
@@ -18,6 +18,7 @@ import { AUTHOR_USER_ID } from '../models/schema';
 import { authorOf, displayNameFor } from '../utils/identity';
 import type { RootStackParamList, RootStackScreenProps, StoryGroup } from '../navigation/types';
 import { colors } from '../styles';
+import type { Entry } from '../domain/merge';
 
 const STORY_DURATION = 5000; // 5 seconds per story
 
@@ -181,7 +182,7 @@ export function StoryViewer({ route, navigation }: RootStackScreenProps<'StoryVi
 
   if (!story) { navigation.goBack(); return null; }
 
-  const timeAgo = fmtTimeAgo(story.timestamp);
+  const timeAgo = fmtTimeAgo(story.sentAt);
 
   return (
     <View style={sv.container}>
@@ -275,7 +276,7 @@ export function StoriesRow() {
   // the row rather than shown as "unknown": it is still content a stranger put there.
   const groups: StoryGroup[] = useMemo(() => {
     const identity = { myUserId, myUsername, friends };
-    const map = new Map<string, ModelEntry[]>();
+    const map = new Map<string, Entry[]>();
     for (const s of stories) {
       const author = authorOf(s.data, AUTHOR_USER_ID);
       if (displayNameFor(author, identity) === null) continue;
@@ -283,7 +284,7 @@ export function StoriesRow() {
       map.get(author)!.push(s);
     }
     for (const entries of map.values()) {
-      entries.sort((a, b) => a.timestamp - b.timestamp); // oldest first within a group
+      entries.sort((a, b) => a.sentAt - b.sentAt); // oldest first within a group
     }
     const result: StoryGroup[] = [];
     result.push({ userId: myUserId, username: myUsername, stories: map.get(myUserId) || [], isMe: true });
@@ -296,8 +297,8 @@ export function StoriesRow() {
     }));
     // Sort friend groups by their newest story (latest activity bubbles up)
     friendGroups.sort((a, b) => {
-      const aLatest = a.stories[a.stories.length - 1]?.timestamp ?? 0;
-      const bLatest = b.stories[b.stories.length - 1]?.timestamp ?? 0;
+      const aLatest = a.stories[a.stories.length - 1]?.sentAt ?? 0;
+      const bLatest = b.stories[b.stories.length - 1]?.sentAt ?? 0;
       return bLatest - aLatest;
     });
     result.push(...friendGroups);

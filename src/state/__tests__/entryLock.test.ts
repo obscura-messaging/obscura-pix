@@ -1,3 +1,4 @@
+import { PIX_MEDIA } from '../../native/__fixtures__/payloads';
 import { drainInbox } from '../drainInbox';
 import { writeEntry } from '../writeEntry';
 import { Obscura } from '../../native/ObscuraModule';
@@ -37,13 +38,13 @@ describe('a local write racing an incoming drain', () => {
     await Obscura.entryPut('pix', 'p1', JSON.stringify({ conversationId: CONV, viewedAt: 0 }), 1_000, BOB);
     bridge.__deliverInbox({
       modelKey: 'pix', entryId: 'p1', sentAt: 3_000, senderDeviceId: 'device_peer',
-      payload: JSON.stringify({ conversationId: CONV, viewedAt: 0 }),
+      payload: JSON.stringify({ ...PIX_MEDIA, conversationId: CONV, viewedAt: 0 }),
     });
 
     const draining = drainInbox();
     const writing = writeEntry({
       model: 'pix', id: 'p1',
-      data: { conversationId: CONV, viewedAt: 42 },
+      data: { ...PIX_MEDIA, conversationId: CONV, viewedAt: 42 },
       selfUserId: SELF, myDeviceId: DEVICE, friends: FRIENDS,
     });
     await Promise.all([draining, writing]);
@@ -58,11 +59,11 @@ describe('a local write racing an incoming drain', () => {
     await Obscura.entryPut('pix', 'p1', JSON.stringify({ viewedAt: 0 }), 1_000, BOB);
     bridge.__deliverInbox({
       modelKey: 'pix', entryId: 'p1', sentAt: 3_000, senderDeviceId: 'device_peer',
-      payload: JSON.stringify({ viewedAt: 0 }),
+      payload: JSON.stringify({ ...PIX_MEDIA, conversationId: CONV, viewedAt: 0 }),
     });
 
     const writing = writeEntry({
-      model: 'pix', id: 'p1', data: { conversationId: CONV, viewedAt: 42 },
+      model: 'pix', id: 'p1', data: { ...PIX_MEDIA, conversationId: CONV, viewedAt: 42 },
       selfUserId: SELF, myDeviceId: DEVICE, friends: FRIENDS,
     });
     const draining = drainInbox();
@@ -81,7 +82,7 @@ describe('a local write racing an incoming drain', () => {
     await Obscura.entryPut('pix', 'p1', JSON.stringify({ viewedAt: 0 }), future, BOB);
 
     await writeEntry({
-      model: 'pix', id: 'p1', data: { conversationId: CONV, viewedAt: 42 },
+      model: 'pix', id: 'p1', data: { ...PIX_MEDIA, conversationId: CONV, viewedAt: 42 },
       selfUserId: SELF, myDeviceId: DEVICE, friends: FRIENDS,
     });
 

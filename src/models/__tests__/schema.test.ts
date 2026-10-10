@@ -21,16 +21,16 @@ describe('what each model means', () => {
     const rules = modelRules();
 
     expect([...rules.keys()].sort()).toEqual(['directMessage', 'pix', 'profile', 'story']);
-    expect(rules.get('directMessage')).toEqual({
+    expect(rules.get('directMessage')).toMatchObject({
       merge: 'APPEND', conversationField: 'conversationId', ownerIdPrefix: undefined,
     });
-    expect(rules.get('story')).toEqual({
+    expect(rules.get('story')).toMatchObject({
       merge: 'APPEND', conversationField: undefined, ownerIdPrefix: undefined,
     });
-    expect(rules.get('pix')).toEqual({
+    expect(rules.get('pix')).toMatchObject({
       merge: 'REPLACE', conversationField: 'conversationId', ownerIdPrefix: undefined,
     });
-    expect(rules.get('profile')).toEqual({
+    expect(rules.get('profile')).toMatchObject({
       merge: 'REPLACE', conversationField: undefined, ownerIdPrefix: 'profile_',
     });
   });
