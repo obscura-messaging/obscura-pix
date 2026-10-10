@@ -170,14 +170,12 @@ object ObscuraSession {
     private fun buildClient(username: String): ObscuraClient {
         destroyClient()
         val dbName = "obscura_${username}.db"
-        // SQLCipher, keyed per user from the Android Keystore (iOS: SQLCipher + Keychain).
         System.loadLibrary("sqlcipher")
         val driver = try {
             openDatabase(username, dbName)
         } catch (e: Exception) {
             if (!isUndecryptable(e)) throw e
-            // The key is lost or the file is unreadable, so the local identity is gone either way.
-            // Start clean: the user signs in again and is provisioned as a new device.
+            // Unreadable without its key: start over, and the next login provisions a new device.
             Log.e(TAG, "Database for $username cannot be decrypted; discarding it", e)
             LocalKeystore.discardDatabase(appContext, username, dbName)
             sessionStorage.clear()
@@ -195,13 +193,9 @@ object ObscuraSession {
         return c
     }
 
-    /**
-     * Open the user's SQLCipher database and read from it once, so a wrong or missing key fails
-     * here, where it can be recovered, rather than partway through a session.
-     */
+    /** Opens the user's SQLCipher database and reads once, so a bad key fails here. */
     private fun openDatabase(username: String, dbName: String): AndroidSqliteDriver {
         val key = LocalKeystore.databaseKey(appContext, username)
-        LocalKeystore.encryptPlaintextDatabase(appContext, dbName, key)
         val driver = AndroidSqliteDriver(
             ObscuraDatabase.Schema, appContext, dbName,
             factory = SupportOpenHelperFactory(key),
@@ -215,11 +209,7 @@ object ObscuraSession {
         return driver
     }
 
-    /**
-     * Whether [e] means the database can never be decrypted: a lost key, or a file SQLCipher
-     * cannot read ("file is not a database", SQLite code 26). A full disk or a locked file is
-     * transient and must not cost the user their identity.
-     */
+    /** A lost key or a file SQLCipher cannot read. Transient errors (full disk, lock) are not. */
     private fun isUndecryptable(e: Throwable): Boolean =
         generateSequence(e) { it.cause }.any {
             it is LocalKeystore.SecretUnavailableException ||
@@ -257,8 +247,7 @@ object ObscuraSession {
 
         Log.d(TAG, "Restoring session: user=$username")
         val c = buildClient(username)
-        // buildClient discards an undecryptable database together with the session; there is
-        // nothing left to restore, so stay signed out.
+        // buildClient clears the session when it discards an undecryptable database.
         if (sessionStorage.load() == null) {
             destroyClient()
             return null
